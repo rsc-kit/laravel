@@ -1,87 +1,111 @@
 # rsc-kit for Laravel
 
-React Server Components in Laravel: server-rendered React, streamed HTML, PHP
-callables and server actions, over a local socket.
+React Server Components with Laravel behind them. The renderer owns the request
+— routing, rendering, prerendering, static serving — and calls back here for
+the data, the session, and whether a route may render at all.
 
-This is the Laravel host for [rsc-kit](https://github.com/rsc-kit/rsc-kit). The
-engine is `@rsc-kit/core` on npm and is backend-agnostic; this package drives it
-from PHP.
+This is the Laravel backend for [rsc-kit](https://github.com/rsc-kit/rsc-kit).
+The engine is `@rsc-kit/core` on npm and is backend-agnostic; this package is
+about 400 lines of PHP that answers its questions.
 
 ```sh
 composer require rsc-kit/laravel
 ```
 
-## Features
+## What you get
 
-- **React Server Components** — Server-rendered React with zero client JS for server components
-- **File-based routing** — Next.js App Router conventions (pages, layouts, route groups, dynamic segments)
-- **PHP callables** — Call Eloquent, auth, sessions directly from server components via `rpc()`
-- **Server actions** — `"use server"` functions for form mutations
-- **Streaming HTML** — Suspense boundaries stream progressively over the wire
-- **Partial Prerendering (PPR)** — Static shell cached at build time, dynamic content streamed at runtime
-- **Parallel routes** — `@folder` convention for named layout slots
-- **Route interception** — `(.)/(..)/(...)`  convention for modals on SPA navigation
-- **Typed routes** — The build writes the urls it found, so a link to a page that does not exist fails the typecheck
-- **Sub-millisecond IPC** — Binary frame protocol over Unix sockets
+- **React Server Components** — server-rendered React, no client JS for a server component
+- **File-based routing** — the file tree is the route table; no routes to declare
+- **PHP callables** — reach Eloquent, auth and sessions from a server component with `rpc()`
+- **Server actions** — `"use server"` functions for mutations, with your validation
+- **Your middleware, per route** — `auth`, `verified`, `throttle:60,1`, `can:update,post`, run through Laravel's own pipeline
+- **Streaming HTML** — Suspense boundaries fill in progressively
+- **Partial prerendering** — a static shell at build time, the rest streamed
+- **Parallel routes and interception** — `@folder` slots, `(.)` modals
+- **Typed routes** — the build writes the urls it found, so a link to a page that does not exist fails the typecheck
 
-## Quick Start
+## How it fits together
 
-```bash
+Two processes. The renderer serves the browser; Laravel answers it.
+
+```
+browser  →  renderer  ──render──▶  React
+                │
+                ├─ before rendering:  POST /__rsc/host-call  {"middleware":["auth"]}
+                └─ during rendering:  POST /__rsc/host-call  {"function":"Orders.recent","args":[5]}
+                                              │
+                                              ▼
+                                        your Laravel app
+```
+
+Both are the same endpoint, and it is off until you give it a secret. It runs
+registered functions by name with none of your routing in front of it, so keep
+it unreachable from outside as well as authenticated — bind the renderer to
+loopback, or serve the endpoint on a unix socket, which HTTP runs over
+unchanged and which opens no port at all.
+
+## Quick start
+
+```sh
 composer require rsc-kit/laravel
-bun add react react-dom react-server-dom-webpack
+bun add @rsc-kit/core react react-dom
 ```
 
 ```env
-BUN_RSC_ENABLED=true
-BUN_BRIDGE_SOCKET=/tmp/my-app-bridge.sock
+RSC_HOST_CALL_SECRET=a-long-random-string
 ```
+
+A function your components can call:
+
+```php
+// app/Rsc/Posts.php
+namespace App\Rsc;
+
+class Posts
+{
+    public function latest(): array
+    {
+        return Post::latest()->take(5)->get()->all();
+    }
+}
+```
+
+A page that calls it:
 
 ```tsx
 // resources/js/rsc/app/page.tsx
 export default async function Home() {
-  const posts = await php<Post[]>('Posts.latest');
+  const posts = await rpc<Post[]>('Posts.latest');
+
   return (
     <main>
-      {posts.map(p => <article key={p.id}><h2>{p.title}</h2></article>)}
+      {posts.map((p) => <article key={p.id}><h2>{p.title}</h2></article>)}
     </main>
   );
 }
 ```
 
-```bash
-php artisan bun:dev
+Guarding a route, without declaring one:
+
+```ts
+// resources/js/rsc/app/admin/route.ts
+export const middleware = ['auth', 'can:update,post'];
 ```
+
+Those are ordinary Laravel middleware. The renderer asks before anything at or
+below that route renders, and a refusal is the answer to the request.
 
 ## Requirements
 
-- PHP 8.2+ with the `sockets` extension
+- PHP 8.2+
 - Laravel 11+
-- [Bun](https://bun.sh) 1.0+, or Node 24+
+- [Bun](https://bun.sh) or Node 24+, for the renderer
 - React 19
 
 ## Documentation
 
-Full documentation, guides, and live demos at **[rsc-kit.dev](https://rsc-kit.dev)**
-
-## Performance
-
-Rendering a page, measured against Inertia's Node SSR server on the same
-machine — a comparison of transports, not a claim to replace it:
-
-| | Avg | Min | Max |
-|---|---|---|---|
-| **rsc-kit (Unix socket)** | **2.39ms** | **1.73ms** | **4.75ms** |
-| Inertia HTTP SSR (Bun) | 3.36ms | 2.32ms | 19.47ms |
-
-A Unix socket skips the TCP stack, which is where most of the difference is.
-No additional PHP memory overhead either way.
+Guides, live demos and the full API at **[rsc-kit.dev](https://rsc-kit.dev)**.
 
 ## Support
 
-If this saved you time, consider supporting the project:
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?logo=buy-me-a-coffee&logoColor=white)](https://buymeacoffee.com/ramonmalcolm)
-
-## License
-
-MIT
+Issues and discussion at [rsc-kit/laravel](https://github.com/rsc-kit/laravel).

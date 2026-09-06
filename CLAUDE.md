@@ -1,545 +1,54 @@
-# Laravel RSC Package
+# rsc-kit for Laravel
 
 ## Overview
 
-React Server Components for Laravel. PHP drives a JavaScript runtime over a local socket to render RSC, stream HTML, call back into PHP, and run server actions.
+React Server Components with Laravel behind them. The renderer — a JS process
+running `@rsc-kit/core/host` — owns the request: routing, rendering,
+prerendering and static serving. Laravel answers what only it can: the data,
+the session, and whether a route may render.
 
-The package is `rsc-kit/laravel` (namespace `RscKit\`). The routing layer is a host-agnostic Vite plugin (`rscRoutes()`); Bun is the runtime today but the engine also runs on Node.
+The package is `rsc-kit/laravel` (namespace `RscKit\`). It is about 400 lines,
+and there used to be 7,300: everything the renderer now owns lived here, in two
+implementations that could and did disagree.
 
 ## Architecture
 
-- `src/` — PHP package code (Laravel service provider, RuntimeBridge, RSC pipeline)
-- `tests/` — Pest PHP tests (Unit + Feature)
+- `src/` — the service provider, the host-call endpoint, the callable registry, the middleware runner
+- `tests/` — Pest (Unit + Feature)
 
 The JavaScript half is a separate package, `@rsc-kit/core`, in its own
-repository (`~/Herd/rsc-kit`). This package is one host for it and carries
-no copy: `EnginePath` resolves it from the app's `node_modules`, and the
-commands that need it name the package to install rather than failing on a
-path.
+repository (`~/Herd/rsc-kit`). Nothing here loads it: the two processes speak
+HTTP, so PHP no longer locates, launches or supervises a runtime.
 
 ## Key Conventions
 
 - PHP follows Laravel conventions with Pint formatting
-- RSC builds run through Vite + @vitejs/plugin-rsc (`resources/build-rsc-vite.ts`)
-- Client components use `"use client"` directive
-- Server actions use `"use server"` directive
-- Socket communication uses a binary frame protocol (4-byte length + JSON)
+- Client components use `"use client"`, server actions `"use server"`
+- Route middleware is declared in a colocated `route.ts`, in Laravel's own vocabulary
 - Always run `vendor/bin/pint --dirty --format agent` after modifying PHP files
 
 ## Testing
 
-Two suites, both run from the package root:
+`vendor/bin/pest --compact` from the package root.
 
-- **PHP (Pest + orchestra/testbench)** — the Laravel layer, with RuntimeBridge mocked.
-  - All: `vendor/bin/pest --compact`
-  - One file: `vendor/bin/pest tests/Feature/RouteInterceptionTest.php`
-- **JS (bun:test)** — the vite RSC engine and the client hooks, which the PHP suite never loads.
-  Builds `tests/fixtures/rsc-app` and asserts on what the generated entry renders:
-  layout/slot/intercept composition, Suspense streaming order, metadata, client
-  references, server actions, and the loading.tsx build validation.
-  - `bun test tests/js` (or `bun run test`)
-  - `useForm` runs against a real React renderer under happy-dom. Do not force
-    `NODE_ENV=production` process-wide in a test file — React only exports
-    `act()` from its development build, and the suites share a process.
-
-Add engine-behaviour tests to the JS suite — mocking RuntimeBridge in Pest cannot
-catch a rendering regression.
+What it covers is what is left: reflection-based discovery, the host-call
+endpoint's contract, and the middleware runner. Rendering is the engine's, and
+its tests live in `~/Herd/rsc-kit` — a rendering regression cannot be caught
+from here, because nothing here renders.
 
 ## Development Setup
 
-- Package source: `/Users/ramonmalcolm/Herd/lara-bun` (git repo, branch: `main`) — run the unit/feature suite here
-- Integration app: `/Users/ramonmalcolm/Herd/larabun-docs` (git repo, branch: `main`) — real consuming app for end-to-end/manual testing; requires the published `rsc-kit/laravel` package and ships a Dockerfile
+- Package source: `/Users/ramonmalcolm/Herd/lara-bun`
+- Integration app: `/Users/ramonmalcolm/Herd/larabun-docs` — run `php artisan serve` and `bun server.ts` side by side; both read `RSC_HOST_CALL_SECRET`
 - After package changes: `composer update rsc-kit/laravel` in consuming apps
-- After TS changes: `php artisan rsc:build` to rebuild bundles
-- Runtime is `RSC_RUNTIME=bun|node`; the worker and build run on either
+- After TS changes: rebuild with Vite, then restart the renderer
 
 ## Critical Patterns
 
-### Socket Stream Order
-The stream-start frame MUST be yielded before entering the main streaming loop, so HTTP headers flush before slow `php()` callbacks. But the wait for that frame must still service the callback socket (`RuntimeBridge::readStartFrame()`) — the worker resolves page metadata (which may itself call `php()`) before emitting stream-start, so a bare blocking read here deadlocks both sides until the socket timeout. Do not revert to an eager blocking `readFrame()`. Tests in `BunBridgeStreamOrderTest.php` enforce the ordering.
-
-### Callback Drain
-Before processing a `php()` callback (which may block), always non-blocking poll the main socket and yield pending stream chunks. This ensures Flight data reaches the browser immediately.
-
-### Shell Before Host Calls
-PHP runs a host callback synchronously on the same thread that pumps the HTML
-socket, so while one is in flight nothing the worker writes reaches the browser.
-The worker therefore drains everything React has already queued — the whole
-shell, with every Suspense fallback in it — before releasing the deferred host
-calls (`drainQueuedChunks` in `resources/runtime.ts`). Releasing after only the
-first chunk strands the rest of the shell for the length of the call. The
-release is a stream-quiet signal, never a timer: the `setTimeout` in the worker
-is a deadlock backstop and must stay long enough that it cannot race a cold
-start. Tests in `tests/js/streaming.test.ts` enforce this.
-
-A consequence, not a bug: a slow host call still delays Suspense *completions*
-for its duration, because PHP cannot pump the socket while running app code.
-Fallbacks paint immediately; boundaries behind a 2.5s call resolve after it.
-
-### A Redirect's Delivery Is Decided by Where It Was Thrown
-`redirect()` has two ways to arrive and the caller chooses neither. Headers
-flush before the render's slow work — that is the stream-start invariant — so a
-redirect decided late has no status line left.
-
-Above every Suspense boundary, React cannot finish the shell, so the promise the
-host awaits before writing *rejects*: a document gets a real 3xx, a navigation
-gets `204` + `X-RSC-Redirect`. Inside a boundary the shell is already out, and
-the destination travels in React's error digest (`RSC_REDIRECT;<status>;<url>`)
-for `RedirectBoundary` to perform, plus a `location.replace` script appended to
-a document's stream so it need not hydrate first. Neither buffers a byte.
-
-Three things this gets wrong if you touch it:
-
-**Read the scope, never the caught error.** React catches what a component threw
-and re-raises its own, whose message is stripped in production. Testing the
-caught value for a redirect signal fails exactly where it matters — the answer
-becomes a 500 with the destination sitting in a scope nobody read. The host and
-the prerender probe both read `taken()`.
-
-**A payload request must not get a 3xx.** `fetch` follows one transparently, so
-the client receives the destination's HTML where it expected Flight and hands it
-to the decoder, which reports its own confusion.
-
-**The signal is identified by `Symbol.for`, not `instanceof`.** The app's
-components are bundled separately from the engine, so each has its own copy of
-the class and `instanceof` is simply false across that seam.
-
-A related trap, not about redirects: everything from `return \`// GENERATED by
-rscRoutes()` onward in `vite.ts` is a **template literal**. A helper added there
-cannot use an import at the top of `vite.ts` — it compiles, bundles, and throws
-at render time against a name that is not there. Add the import to the generated
-entry's own header, beside `SegmentBoundary`.
-
-### Activity Retention Rides on Partial Payloads, Not on the Root
-`<Activity mode="hidden">` keeps a page mounted so returning to it restores its
-client state — a half-typed form survives. There are two places it can happen,
-and only one of them cares about `<html>`.
-
-At the **root**, `ActivityRoot` needs a wrapper above the page, and React will
-not hydrate a *document* container through one: the root child of a document
-must be `<html>`, and wrapping it does not warn, it hangs the renderer
-(verified on React 19.2.7). So `createViteRscApp` only wraps when the container
-is an element.
-
-At a **segment boundary**, `SegmentBoundary` retains on its own — it sits below
-the root layout, inside `<body>`, where retained siblings are ordinary elements
-and nothing about `<html>` is at stake. So a document-rooted app *does* retain,
-and the docs app (whose root layout owns `<html>`) is the proof: navigate away
-from a half-typed form and it is still in the DOM behind `display: none`.
-
-What actually decides it is whether the host answers **partially**. A response
-at depth ≥ 1 goes to that boundary and everything above stays mounted; depth 0
-replaces the root and unmounts whatever was retained behind it. A host that
-always returns a whole document therefore has no retention at any depth — which
-is what the Hono spike looked like before it read `X-RSC-Segments`, and it read
-as an `<html>` problem when it was a protocol one.
-
-### The Host Adapter Assumes No Platform, Not Just No Framework
-`@rsc-kit/core/host` takes a `Request` and returns a `Response`, so binding it to
-a framework is one line and there is no per-framework module — a `hono.ts`
-existed briefly and earned nothing but two chances to go stale:
-
-    app.all('*', async (c) => (await rsc(c.req.raw)) ?? c.notFound())   // Hono
-    .all('*', async ({ request, status }) => (await rsc(request)) ?? status(404))  // Elysia
-    Bun.serve({ fetch: async (req) => (await rsc(req)) ?? new Response('', { status: 404 }) })
-
-Nothing under `host.ts`, `routing.ts`, `headers.ts` or `manifest.ts` imports
-`node:` anything, and `tests/js/host.test.ts` fails if that changes. A Worker
-has no filesystem, and a bundler that finds `node:fs` in the graph either fails
-the build or ships a shim that returns nothing — which turns every asset into a
-silent 404.
-
-So `assets` and `prerendered` are functions the host supplies rather than
-directories. `@rsc-kit/core/files` has the disk versions (`assetsFrom`,
-`prerenderedFrom`); an edge host passes a KV or static-binding reader and never
-loads that module.
-
-`revalidate.ts` reaches for async context lazily: the platform's global first,
-because that is where a Worker has it and where the engine puts it, then
-`node:async_hooks`. There is deliberately no third branch. The engine bundle
-imports `node:async_hooks` statically, so async context is a requirement of the
-whole system rather than of that file — a runtime without it cannot load the
-engine at all, and a fallback there would be code that can never run. One was
-written and then removed on exactly that evidence.
-
-Verified on a deployed Worker (`~/Herd/rsc-cf-spike`), not only locally: SSR,
-hydration, a server action, partial navigation, interception with the page
-beneath intact, closing it with no request, and assets from the platform's
-binding. 167 KB gzipped, 21 ms cold start, 88 ms TTFB. The Worker was deleted
-after testing; the spike redeploys with `wrangler deploy --config`. Two
-settings are required and only one of them fails loudly.
-`compatibility_flags = ["nodejs_compat"]`, because @vitejs/plugin-rsc emits a
-static `node:async_hooks` import into both bundles — without it the Worker does
-not load. And `[define]` for NODE_ENV rather than `[vars]`: wrangler
-substitutes `process.env.NODE_ENV` at bundle time, so a var arrives too late
-and the Worker serves a development payload to a production client. Every page
-renders, nothing logs, nothing is interactive. The tell is React's debug rows
-in the payload — `grep -c ':D{'` returns 0 on a production build.
-
-`prerender` and `exportSite` take a `write` sink and a `read` source too, and
-`@rsc-kit/core/files` holds every disk version — `assetsFrom`, `prerenderedFrom`,
-`writeTo`, `copyAssets`. That is not load-bearing for portability: a build runs
-where there is a filesystem, always. It is here because the read side was
-already a function and the write side being a directory was an odd seam, and
-because the export tests now run against a Map instead of temp directories that
-outlive a failure.
-
-Serving a frozen page comes *after* the branches for a named region and an
-interception. A frozen page is a whole page, and both of those ask for
-something smaller: answering a revalidate request with the document puts the
-entire page inside the region, and answering an interception with it replaces
-the page the modal was opening over. Both are silent.
-
-### The Engine Ships Compiled, Because Node Refuses Source
-`@rsc-kit/core` publishes `dist/` — JavaScript and `.d.ts` emitted by `tsc`
-— not the TypeScript under `src/`. Node will not strip types for anything
-inside `node_modules`, and no flag lifts it:
-
-    node -e "import('@rsc-kit/core/host')"
-    ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING
-
-**The monorepo cannot show this.** `node_modules/@rsc-kit/core` is a
-workspace symlink resolving *outside* `node_modules`, so type stripping applies
-and everything works from source. Shipping source therefore looked fine for as
-long as nobody installed the package — while `RSC_RUNTIME=node` was broken for
-every real user, including the Laravel worker, which is launched by path
-straight out of `node_modules`. `scripts/verify-package.sh` packs, installs and
-imports on both runtimes; it is the only check that can see this.
-
-Two consequences for anyone changing the build.
-
-**`tsc`, not `bun build`.** `bun build --no-bundle` fails this package twice: it
-leaves `.ts` specifiers in the output, pointing at files `dist/` does not have,
-and it hoists the JSX runtime import above `"use client"` — a directive one line
-down is an ignored string expression, so every client component silently becomes
-a server one. `tsc` keeps the prologue first and emits one file per input, which
-the plugin depends on.
-
-**The engine's own module paths are written without an extension.** The plugin
-injects absolute paths into the generated entry
-(`join(packageDir, 'js/SegmentBoundary')`), and `packageDir` is `src/` in this
-repo and `dist/` once published. Naming `.tsx` there builds from source and
-fails after publish; Vite resolves either from an extensionless specifier.
-
-### A Header Set During a Render Rides the Frame Before the Body
-
-`responseHeaders()` and `cookies().set()` work on Laravel because the worker
-puts what they collected on the **stream-start** frame — the last thing it
-sends before the body, and the frame PHP reads before writing its status line.
-A redirect carries them too (`failureFrame`), which is what lets middleware
-remember where someone was going before sending them to log in.
-
-Middleware is the only place it can happen. It runs before the render, so
-before PHP has an answer; a component runs during streaming, where the headers
-are already on the wire, and writing from one throws rather than being dropped.
-
-Two things about `Set-Cookie`. Iterating a `Headers` gives it joined in some
-runtimes and per-cookie in others, so the worker reads it only through
-`getSetCookie()` and skips it in the `forEach` — doing both emitted every
-cookie twice.
-
-And **cookies are encrypted by Laravel, engine-set ones included.** An earlier
-version registered each with `EncryptCookies::except()` on the reasoning that
-the engine owns the format of what it writes. That was wrong twice. Laravel's
-cookie encryption is authenticated, so it carries integrity as well as privacy:
-an exempted cookie can be *forged*, and an app trusting what it reads back has
-an authorization bug rather than a disclosure one. And `except()` is static, so
-a name exempted once stayed exempted for the process — under Octane, for every
-later request, including a cookie the application set with the same name.
-
-The engine still sees plaintext because `requestEnvelope()` forwards
-`$request->cookies` — Laravel's decrypted jar — rather than the raw `Cookie`
-header. Forwarding the header was the original code and was broken in the other
-direction: `cookies().get()` returned ciphertext for every app-set cookie, so
-the engine could not read back what it had written on the previous response.
-An app that needs a cookie readable by browser JavaScript uses its own
-`EncryptCookies::$except`, which is where that decision already lives.
-
-### Typed Routes Are One Generated Union, and `export {}` Carries Them
-
-The build writes `rsc-routes.d.ts` beside the app's source with the routes it
-just walked, and `@rsc-kit/core/routes` derives everything from that union —
-`Href` for `Link`/`visit`/`prefetch`/`Form`. So the generated file stays one
-union and all the logic lives in core.
-
-**There is deliberately no `route()` builder.** A template literal is checked
-the same way — `` `/posts/${slug}` `` compiles, `` `/postz/${slug}` `` does not,
-and only `+` concatenation degrades to `string` — so a builder would wrap what
-the language already does. One was written and removed on that evidence.
-Encoding a value that is not url-safe is `encodeURIComponent` in the template,
-which still type-checks; the hazard it addresses is real
-(`` `/posts/${'a / b?c'}` `` compiles and means three segments plus a query)
-but it is not a reason for a second way to write a url.
-
-**Env vars are Vite's, not ours.** `strictImportMetaEnv` + an
-`ImportMetaEnv` declaration is the whole feature and the app writes it once;
-generating it would add a file the app cannot control. One trap, verified on
-Vite 8 with `@types/bun` 1.4: Bun's types declare their own `ImportMetaEnv`
-with an index signature, interfaces merge, and the index signature Vite's
-opt-in removes comes straight back — so a typo compiles as `any` while
-everything looks configured. Declaring keys still buys autocomplete and
-`string` over `string | undefined`.
-
-**The check file needs its own tsconfig.** `routeTypes.check.ts` registers a
-route union, and a module augmentation applies to every file in its program —
-left in the main one it checks the whole repo against five fixture routes, and
-the errors land in unrelated files.
-
-**`export {}` in that file is load-bearing.** In a file with no import or
-export, `declare module '@rsc-kit/core/routes'` is an *ambient module
-declaration* that replaces the real module rather than augmenting it: `Href`
-and `route` vanish from it and the error says only "has no exported member",
-which reads like a broken build rather than a shadowed module.
-
-An app that never runs the generator registers nothing, `RoutePattern` stays
-`string`, and every url-taking api is exactly as permissive as before — which
-is why this ships with no flag. Two limits are real and neither is fixable:
-a dynamic segment widens to `${string}`, so `/posts/a/b` type-checks against
-`/posts/[slug]`; and a link *list* widens to `string` unless declared with
-`satisfies { href: Href }[]`.
-
-`redirect()` is deliberately left as `string`. Its destination is usually
-computed — read from a cookie, handed over by middleware — and typing it would
-make the common case a cast.
-
-### Server Actions Are Not Sequenced, and Ordering Them Would Be Wrong
-
-Next runs one server action at a time per client; nothing here does. The client
-posts an ordinary `fetch`, the worker answers per socket, and Laravel opens a
-second socket rather than waiting. `overlapping()` in the fixture counts its own
-concurrent entries and `workerProtocol.test.ts` asserts it saw two — timing
-alone cannot tell a pool from a queue on a loaded machine.
-
-The cost is real and lives in `applyRevalidated`: two actions revalidating the
-same target leave whichever response *arrived* last on screen. Do not "fix"
-this with client-side sequence numbers. Send order is not commit order — a slow
-first action can commit after a fast second one, and its tree is then the newer
-state, so rejecting it as stale shows older data. Only the server knows which
-write won.
-
-### The Build Stamps Its Own Mode, So No Script Has To
-
-Vite substitutes `process.env.NODE_ENV` in a **client** build and leaves it
-alone in the server ones, because server code runs where `process.env` is real.
-Reasonable in general and wrong here: React picks its build from that
-expression when its module is first evaluated, so leaving it to the runtime
-made every server carry a value it must not get wrong — and a production bundle
-started without one renders every page perfectly and hydrates none of them.
-
-`rscRoutes()` therefore returns a `define` for it. The rsc and ssr bundles go
-from ten occurrences to zero, and a server started with `NODE_ENV` unset is
-production because it was *built* that way. Do not put it back in a package.json
-script: that is a second source of truth, and the one that can disagree with the
-build.
-
-The two builds are genuinely different, which is worth knowing before assuming
-a mode flag did nothing — production is 190 KB with minified error codes,
-development is 408 KB with full messages.
-
-### The Plugin Comes From the App, Not From Here
-
-`rscRoutes()` resolves `@vitejs/plugin-rsc` against the project root and
-imports it at call time, rather than using this package's own static import.
-Vite allows a promise inside a plugins array and flattens it in place, so the
-factory stays one entry in the app's config.
-
-The reason is `isRunnableDevEnvironment`, an instanceof check plugin-rsc runs
-against its own copy of Vite. Two copies — this package's and the app's — make
-a perfectly runnable environment report false, and the error names the
-environment (`[vite-rsc] environment 'ssr' is not runnable`) rather than the
-duplication.
-
-That layout is not hypothetical: it is what installing this package **from a
-directory** produces, because the checkout carries its own devDependencies. So
-it is the normal state for anyone developing the framework, and for any app
-scaffolded against a local checkout. A build never reaches the check, so
-everything works right up until `vite dev`. Resolving from the app gets its
-plugin copy, whose own `vite` import then resolves to the app's Vite too — one
-pair, and the check passes.
-
-### `vite build` Freezes Pages Itself
-
-The prerender runs in the plugin's `buildApp` hook, which is the first moment
-all three bundles exist — prerendering is the app rendering itself, so it needs
-what the build just produced. `rscRoutes()` is ordered after
-@vitejs/plugin-rsc's plugins, so its `buildApp` runs last.
-
-Automatic because the alternative is a second command, and forgetting it costs
-the whole difference silently: every page still works, each one just renders
-again for every visitor. Measured on a page with one 40 ms query, 7.8 ms frozen
-against 55.7 ms rendered; on a page that does no work the difference is about a
-millisecond, so the benefit is entirely a function of how expensive the page
-is.
-
-`prerender: false`, or `RSC_PRERENDER=0` for a host driving the build out of
-process, turns it off. The opt-out is not decoration: prerendering **runs
-application code**, so it inherits every dependency that code has — a database,
-an API credential — and none of those are reliably present in a CI container.
-A route that throws fails the build, which is right and is the wrong thing to
-be stuck with when the cause is the build machine rather than the page. Off in
-watch mode regardless.
-
-### Dev Mode Has Two Update Paths, and Only One Preserves State
-
-A client component is a module the browser holds, so Vite replaces it and React
-keeps its state — that is Fast Refresh, and it comes from `@vitejs/plugin-react`
-being present. Installing that plugin only when the React Compiler was enabled
-left every other app with no Fast Refresh at all: an edit was a full reload and
-whatever the component held was gone. The compiler is the conditional *option*
-(`react({ compiler: true })`), never the plugin.
-
-A server component is not such a module, so nothing can be swapped.
-@vitejs/plugin-rsc reports the change instead, sending `rsc:update` on the
-client channel, and the generated browser entry listens and calls
-`refresh('all')`. Without a listener an edit reaches the server and stops
-there.
-
-`'all'` rather than `'page'` because a layout is a server component too. The
-choice costs nothing: a client component below is remounted either way, since
-the new payload carries a fresh reference to its module — verified at both
-boundaries, state reset in both. Do not go looking for a boundary that keeps
-it.
-
-### Retention Puts More Than One `<title>` in the Head
-
-A page's `<title>` is rendered inside its own tree so React 19 hoists it into
-`<head>`. A retained page is still mounted — that is the whole point of
-retention — so its `<title>` is still in the tree and gets hoisted too.
-`document.title` reads the **first** element, which is the oldest retained
-page's, so the title lags a navigation behind:
-
-    path /about, document.title "Home", <head> holding <title>Home</title>
-    and <title>About</title>
-
-It reads as a race — it depends on which pages happen to be retained and shows
-up when clicking quickly — and it is not one. A settled navigation is wrong in
-exactly the same way.
-
-`DocumentTitle` settles it with an effect, because `<Activity mode="hidden">`
-tears effects down and re-runs them on show: exactly one page's effect is live,
-the visible one, so it needs no notion of navigation or history. The `<title>`
-element stays for the server render and for a route with no runtime.
-
-**The `if (bootstrap)` guard on it is load-bearing.** It is a client component,
-and one on a route that ships no runtime is refused by the *prerender* — not by
-`vite build`, which is where I first looked. The fixture's `app/plain/page.tsx`
-carries a `metadata` export for no other reason than to give that refusal
-something to catch: with the guard, `prerender.test.ts` passes; without it,
-"renders to html with no bootstrap" fails.
-
-### A Shell Probe Without a Page Key Is a Pattern Probe
-
-`handleRscPprShell` settles the page's params only when it is given a
-`pageKey` — the url this shell will be served for, when it is served for
-exactly one. Without one the params never settle, which is right for a
-parameterised route whose urls were never listed and wrong for everything else.
-
-The Laravel path dropped it in two places at once: `RuntimeBridge::rscPprShell`
-had no such parameter, and the worker's `rsc-ppr-shell` branch passed only five
-arguments. So every shell was rendered as a pattern shell.
-
-Invisible until a page actually awaits its params. One that reads them
-synchronously renders regardless; one that awaits suspends immediately, and
-what gets frozen is its loading fallback **as a bare fragment** — 422 bytes, no
-`<html>`, no bootstrap script — so the browser has nothing to hydrate and the
-page stays blank forever. The tell is a `.ppr.html` of a few hundred bytes next
-to siblings of ten or twenty kilobytes.
-
-With the key passed, a route that listed its urls stops being PPR at all: the
-page renders whole at build time and is frozen as `.html` plus its flight
-variants, which is what it should always have been.
-
-`prerenderPprShell()` is the one caller that must keep passing nothing — it
-renders the pattern with `__ppr__` placeholders, where any settled value would
-be an invention.
-
-### Every Message the Worker Renders From Needs the Request Envelope
-
-`rsc()` sent none. It is the non-streaming path, used only by an interception,
-which is why only interceptions broke.
-
-Without `url` and `headers` the worker opens no request scope, so the
-`searchParams` promise every page and slot is handed **rejects** rather than
-resolving. `pageSearchParams()` attaches a `.catch()` so nothing is reported,
-React never finishes serializing the tree, and the worker never answers. PHP
-gives up five seconds later with "RSC callback timed out" — a message about the
-callback socket, which is not involved, and nothing in either log names
-searchParams.
-
-The tell: send the same frame to the worker socket by hand with `url` and
-`headers` and it answers in milliseconds; drop those two fields and it never
-answers at all. Worth doing before believing any theory about pools, callbacks
-or timeouts.
-
-### A Refresh Has to Put Back Every Scroll Position, Not Just the Window's
-
-`refresh('all')` clears `heldLayouts`, so the server answers at depth 0 and the
-root is replaced. The window survives that — the document element is not the
-node being swapped — but every element with its own overflow is a **new node
-starting at zero**. On the docs app that is the sidebar, and it jumps to the top
-on every refresh while the window looks fine, which is why `preserveScroll`
-appeared to work.
-
-Three things this needed, each of which failed silently on its own:
-
-**Capture and restore must use the same predicate.** Recording the elements
-that *are* scrolled and restoring over the ones that *can* scroll does not line
-up — `<html>` can scroll on any long page, takes index 0, and the sidebar's
-position is applied to the wrong element or dropped by the tag guard.
-
-**One pass is too early.** `root.render()` schedules the update rather than
-performing it, and the navigation promise resolves when React is handed the
-tree, not when it has committed. A single restore writes onto the nodes about
-to be discarded. It re-applies for a few ticks instead.
-
-**`setTimeout`, not `requestAnimationFrame`.** A hidden tab runs no animation
-frames at all, so an rAF-based restore never fires for a refresh in a
-background tab. It also makes the whole thing untestable through an automated
-browser, where the tab under test is usually hidden — three fixes in a row read
-as "no effect" for that reason alone. Check `document.visibilityState` before
-believing a browser result about timing.
-
-### The Engine Is a Separate npm Package
-The JavaScript half — plugin, build CLI, worker, client runtime — publishes as
-`@rsc-kit/core` and is backend-agnostic; this Composer package is one host for
-it and carries no copy. PHP locates it through `RscKit\\Support\\EnginePath`,
-which resolves it from the app's `node_modules`. Never reconstruct that path at
-a call site, and never write the package name at one either: three commands
-used to rebuild the path and two still pointed at `rsc-kit/laravel`, a package
-name that no longer exists. `EnginePath::PACKAGE` being the only place the name
-is written is what made the rename to `rsc-kit` a one-line change here.
-
-Ambient types are split by owner. `rsc-types.d.ts` is the engine's
-(`Metadata`, `GenerateMetadata`), copied into the app verbatim. `rsc-env.d.ts`
-declares the host global under whatever name the host configured. Both are
-written by the build, into `sourceDir` — where the app's imports and its
-typechecker can reach them. The global must be declared in exactly one of
-them — two ambient declarations of the same function conflict.
-
-### The Plugin Assumes No Backend
-`rscRoutes()` is published on its own, so it defaults to nothing a particular
-host does: no `route.php`, no `laravel-rsc` import prefix, no
-`resources/js/rsc` or `bootstrap/rsc`. Its defaults are plain Vite ones —
-`src/app` in, `dist/client` + `.rsc` out. Laravel's conventions are passed by
-`RscBuildCommand` through `RSC_PACKAGE_ALIAS`, `RSC_ROUTE_CONFIG_FILE`,
-`RSC_ROUTE_CONFIG_PATTERN` and `RSC_HOST_ACTIONS`, because a host driving the
-build out of process cannot pass a RegExp — or a map it discovered by
-reflection — any other way. `tests/js/generic-host.test.ts` fails if a
-backend-shaped default reappears, and builds a host that passes nothing.
-
-### Tailwind Needs @source
-The build compiles no CSS itself — it runs the project's own Vite config, so an
-app adds `@tailwindcss/vite` there like any Vite project. It must also declare
-`@source` for its RSC source directory: server components never enter the client
-module graph, and Tailwind's automatic detection roots at the Vite root, so
-without it the utilities layer comes out holding only classes scraped from the
-generated entries. The build still succeeds — nothing warns. Both halves are
-pinned in `tests/js/tailwind.test.ts`. One more ordering trap: Tailwind emits
-arbitrary media variants (`min-[901px]:`) *ahead* of the named breakpoints, so a
-`md:` rule lands last and wins at every larger width. Declare a real breakpoint
-in `@theme` instead.
+These are not API surface. They are the things that fail silently.
 
 ### Discovery Is the Host's, Placement Is the Build's
+
 Server actions are found by PHP and written by the plugin, and the split is
 deliberate. Discovery is reflection over the app's own classes — `class_exists`
 through Composer's autoloader, `getMethods(IS_PUBLIC)` returning what a class
@@ -554,187 +63,59 @@ Rewritten every run, all three: a stale stub calls a global that has since been
 renamed and nothing fails until the browser. That is also why the global's name
 travels as `RSC_HOST_GLOBAL` rather than being written down twice.
 
-`intercept-manifest.json` is the plugin's own, inlined into the generated
-browser entry. The Vite migration once dropped it, leaving the client's
-intercept manifest permanently empty — every intercepted link fell through to a
-full-page navigation, with nothing visible at build time.
+### A Refusal Must Never Look Like Silence
 
-### `source_dir` Is Not the Host's to Know
-Where the app tree lives is declared in `vite.config.ts`
-(`rscRoutes({ sourceDir: 'resources/js/rsc' })`), not in `config/rsc.php`.
-Everything that reads it is the build.
+Two places decide whether a page renders, and both fail closed on purpose.
 
-PHP still needs the `route.php` files under it, so the plugin writes their paths
-into `routes.json` — it is already walking those directories and already stats
-that file to classify a route. They are **project-root-relative**: an absolute
-path is only true on the machine that produced it, and building in a container
-is ordinary. `RouteManifest` rebases them; nothing walks the tree at boot.
+`RouteMiddleware::run()` returns true only when Laravel's pipeline reached the
+end. Everything else throws, and the engine treats anything that is not a
+literal `true` as a refusal — so a middleware that aborts, redirects or simply
+errors keeps the page from rendering rather than being read as silence.
 
-Two consequences. Route registration guards on the manifest existing rather
-than on a source directory, since the manifest is what it actually reads. And a
-manifest-shape change takes two builds to settle, because registration boots
-from the *previous* build's manifest — the first build after such a change
-registers from the old shape and writes the new one. It is self-healing, but a
-one-build discrepancy in what `rsc:build` reports is expected, not a bug.
+`HostCallDispatcher` keeps the outcomes apart rather than collapsing them. A
+refusal is 422 with its fields in `validationErrors`; unauthenticated is 401,
+unauthorized 403; a middleware that aborted keeps its own status. A redirect is
+answered **200** with the destination in the body, never as a 3xx — an HTTP
+client follows one transparently, so a real redirect would send the host call
+itself to the destination and hand back whatever it found as the result.
 
-### Development Builds Keep React's Real Errors
-`rsc:dev` and `rsc:build --dev` build against React's development bundle, so a
-failure reads as "Maximum update depth exceeded" rather than "Minified React
-error #185" and a link. Setting NODE_ENV is not enough on its own — `vite build`
-is production mode unless passed `--mode development`, and without that the dev
-build still resolves React's production entry.
+`hash_equals('', '')` is TRUE, which is why an unconfigured secret is checked
+before the comparison rather than trusted to it.
 
-Both commands take their environment from `BuildEnvironment::forVite`. They used
-to write it out separately and had already drifted: the watcher was missing the
-import alias and the route.php marker, so `rsc:dev` produced a different build
-from `rsc:build`.
+### CSRF Is Deliberately Not on the Endpoint
 
-### Test Navigation as a Journey
-`tests/js/navigationJourneys.test.tsx` drives the real router — its prefetch
-cache, history handling and restore path — against a stand-in server that
-answers the segment protocol. Every navigation bug this feature produced lived
-in a journey rather than a unit, and the store, boundary and depth arithmetic
-each passed their own tests throughout: hover-then-click, a section with its
-own layout, forward-then-back. Add a journey there when changing navigation,
-not another unit test.
+The endpoint carries the session middleware — the renderer forwards the
+visitor's cookie, `EncryptCookies` decrypts it, `StartSession` binds their
+session, and a function reading `auth()->user()` finds the person the page is
+being rendered for.
 
-Two things it has to do that a browser would not. Retained pages stay in the
-DOM, so assert on visibility rather than presence — and happy-dom has no layout
-engine and reports client rects for hidden elements, so read the inline
-`display` Activity sets instead of geometry.
+It does not carry `VerifyCsrfToken`, and with it every call answers 419. CSRF
+protects a browser from being tricked into posting with the user's cookies; the
+caller here holds a shared secret, which a browser cannot be tricked into
+sending. The alternative was asking every application to add an exception in
+`bootstrap/app.php`.
 
-### An Interception Fills a Slot, It Does Not Replace the Page
-A host that can render a region on its own answers an intercepted navigation
-with the interceptor alone, marked `X-RSC-Revalidate: <slot>`, and the client
-puts it in the slot. The page underneath is never touched, so opening a modal
-from a half-filled form keeps the form — and closing costs no request at all,
-because the page beneath never left. `navigate` remembers the url an
-interception was opened over for exactly that.
+`AddQueuedCookiesToResponse` is what lets a call log someone in: a cookie queued
+during it reaches this response, and the renderer puts it on the page's.
 
-The JS host does this; Laravel still answers with a re-rendered segment, and
-the client falls back to the section below when no such header arrives. Both
-paths are covered in `navigationJourneys.test.tsx`. The fallback is why that
-older behaviour is still described here.
+### A Failed Render Is Not a Page to Freeze
 
-### Leaving a Re-Rendered Interception Re-Renders the Slot Owner
-An interceptor replaces a slot on the layout that declares it, so leaving the
-intercepted view has to render that layout again for the slot to fall back to
-its default. `navigate` remembers the depth an interception was applied at and
-claims only that many layouts on the next ordinary navigation, which forces the
-server to re-render the owner. Without it the next payload replaces only the
-page below that layout and the modal stays open over it, with the URL already
-changed.
+React reports a failed row *inside* the payload rather than by rejecting — a
+rejection inside a Suspense boundary never reaches the caller — so a render
+"succeeds" and the result looks storable. It is not: the browser decodes that
+row, throws, unmounts the document, and shows a blank page with the error
+nowhere near its cause. Worse, the file outlives the build.
 
-`segmentStart` on the engine covers the way in — widening a render that would
-otherwise skip the owner. This is the way out; both are needed.
+This cost three pages in the docs app, blank on every visit until someone
+rebuilt, with nothing in the console.
 
-The prefetch cache has to be checked against the chain the navigation is about
-to *claim*, not the one currently mounted. A pointer hovers a link before
-clicking it, so hovering Close prefetches against the full chain; reusing that
-entry skips the layout holding the modal and leaves it open over the page
-behind. A scripted `.click()` never hovers, which is why this reproduces with a
-mouse and not in a script.
+### What Moved to the Engine
 
-### A Prefetched Payload Is Partial Too
-`prefetch` is a real request and goes out with the chain the client holds, so
-the server answers with the page alone. The cache entry therefore stores the
-segment depth and layout chain beside the tree, and the chain it was fetched
-against — a partial only composes against that one, so an entry whose
-`heldWhenFetched` no longer matches is discarded rather than used. Dropping the
-depth on a cache hit makes the client treat a segment as a whole document and
-replace the root with a page that has no layouts: content on a blank page, no
-nav, no stylesheet, only after a hover.
+Routing, rendering, prerendering, static serving, the header protocol, redirect
+delivery and partial-navigation depth all live in `@rsc-kit/core` now. There
+used to be a second implementation of each here, and they drifted twice — an
+interception that answered with a whole segment instead of the slot, and a PPR
+shell probe that dropped its page key. Both looked like working code.
 
-### Retained Pages Are Still in the DOM
-A boundary keeps recently shown pages mounted behind `<Activity mode="hidden">`,
-which is what makes returning restore a half-typed form: hidden tears down
-effects but keeps state, where unmounting throws it away. They stay in the
-document, so `document.querySelector` can reach a retained page — check
-visibility, not presence, when asserting on the current one. React sets
-`display: none`, so they are out of the accessibility tree.
-
-Retention is bounded (`RETENTION`) because hidden trees keep their DOM, and
-ordered by visit rather than insertion so bouncing between two pages evicts
-neither. The store's state objects are immutable: `useSyncExternalStore`
-compares snapshots by identity, and building a fresh one per read reads as
-"changed every render" — it loops until React throws #185, which reaches the
-browser as a blank page.
-
-### Partial Navigation Payloads
-A navigation sends `X-RSC-Segments` — the layout chain the client has mounted,
-outermost first. The host compares it with the route's chain
-(`RscResponse::commonLayoutDepth`) and passes the shared depth to the engine as
-`from`; the response reports `X-RSC-Segment-Depth` (the boundary the payload
-replaces, 0 meaning a whole document) and `X-RSC-Layouts` (the chain to send
-back next time). Depth 0 replaces the root and clears the store; anything
-deeper goes to that boundary.
-
-The engine decides the real depth, not the host: `segmentStart` widens the
-render when an interceptor targets a slot on a layout that would otherwise be
-skipped, because the override could never reach a layout the client is keeping.
-Metadata always resolves against the FULL chain — a title template lives on an
-outer layout, and a partial render still has to produce the same `<title>`.
-
-Prerendered routes answer partially too. Alongside `{path}.flight` the build
-writes one variant per depth — `{path}.seg1.flight`, `{path}.seg2.flight`, … —
-each rendered with that many layouts left out, and `ServeStaticRsc` serves the
-one matching the depth this client shares. One variant is not enough: a section
-with its own layout has a longer chain than the page you came from, so the
-shared depth is less than the whole chain and only the variant for that depth
-fits. Without it every navigation to a prerendered route is a
-whole document, which replaces the root and unmounts the pages retained behind
-it: the form you were filling in does not survive going back. Most routes in a
-real app are prerendered, so that is the common path, not an edge case.
-
-### A Route Can Ship No JavaScript
-`PageRoute::make()->withoutClientJs()` renders a route to HTML and stops: no
-bootstrap script, so no React, no Flight client, no router. The floor that buys
-back is ~70kB gzip, of which react-dom alone is ~54kB — paid the moment anything
-hydrates, on a page that may have nothing to hydrate.
-
-Two things make it possible. The SSR entry omits `bootstrapScriptContent`, and
-`buildElement` omits the `SegmentBoundary` — the boundary is itself a client
-component, so leaving it in means no page can ever be JS-free.
-
-The build refuses the combination rather than shipping it: a client component
-without a runtime is inert markup, a button that does nothing. The refusal names
-the components responsible, because they are usually inherited from a shared
-layout rather than written on the page. A refusal is a decision, not a
-classification — `prerenderSingleUrl` must return it, not fall through to PPR.
-
-### Segment Boundaries
-`buildElement` puts a `SegmentBoundary` client component between each layout and
-its children, depth 1 being everything below the root layout. It is the seam a
-navigation can replace on its own: server components cannot be re-rendered on
-the client, so the swap point has to be a client component reading from
-`segmentStore`. With nothing stored a boundary renders the children the server
-sent, which is the behaviour that existed before boundaries — that default is
-what lets them ship ahead of partial responses.
-
-`setSegment(depth, tree)` drops every deeper segment, which belonged to the page
-being replaced; leaving them would render the previous page inside the new one.
-A deployment must `clearSegments()`, since a retained layout from the old build
-has no claim on being right for the new one.
-
-### Slots Belong to the Layout That Declares Them
-Parallel slots are collected by walking up from the page to the app root, so an
-`@slot` directory sits at some level and belongs to the layout in that
-directory. Composition attributes each slot by its own component path —
-`app/docs/@modal/default` is declared in `app/docs` — rather than handing every
-slot to the innermost layout, which drops any the innermost does not declare.
-Nothing errors when that happens: the page renders and the modal is simply
-absent.
-
-Assert this on rendered HTML, not the Flight payload. An unused prop is still
-serialized, so the payload contains the slot component whether or not any
-layout rendered it — which is how a test for this passed while the bug was
-live.
-
-### Route Interception
-- `(.)/(..)/(...) ` patterns in `@slot` directories are intercepted routes
-- Intercept pages are excluded from normal route registration
-- Prefetch cache uses `__intercept:slot:url` key to separate intercepted vs full-page responses
-- The `X-RSC-Intercept` and `X-RSC-Referer` headers control server-side interception
-- A host that answers with the interceptor alone says so with
-  `X-RSC-Revalidate: <slot>`; without it the client treats the answer as a
-  segment of the page and replaces it
+Engine behaviour is documented in `~/Herd/rsc-kit/CLAUDE.md`. Do not
+reintroduce a copy of it here.

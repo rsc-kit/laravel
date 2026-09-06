@@ -1,86 +1,63 @@
 <?php
 
-use RscKit\Support\System;
-
 return [
-    // JavaScript runtime that renders RSC. 'bun' (default) or 'node' — the
-    // worker and build both run on either. Bun starts faster and needs no
-    // separate install step on hosts where `rsc:install` vendors the binary.
-    'runtime' => env('RSC_RUNTIME', 'bun'),
-
-    // Explicit path to the runtime executable. Leave null to auto-discover
-    // (Homebrew / /usr/local / ~/.bun / PATH). Relative paths resolve from the
-    // app base path. Set this on hosts where the runtime is vendored into the
-    // app — e.g. Laravel Cloud, where `php artisan rsc:install` downloads a
-    // static binary the runtime image would not otherwise have.
-    'binary' => env('RSC_RUNTIME_BINARY'),
-
-    // Transport between PHP and the worker. 'unix' (default) uses a local Unix
-    // domain socket — fastest, and lockable to the owner on shared hosts. Keep
-    // this on any host where PHP and the worker share a filesystem, which
-    // includes Laravel Cloud: `rsc:serve` runs as an App-cluster background
-    // process in the same pod that serves web traffic.
-    //
-    // 'tcp' uses a loopback connection instead. Reach for it only when the two
-    // genuinely cannot share a socket path — separate containers on a shared
-    // network. With multiple workers, main ports are host:port..port+N-1 and
-    // callback ports follow at port+N..port+2N-1.
-    'transport' => env('RSC_TRANSPORT', 'unix'),
-    'host' => env('RSC_HOST', '127.0.0.1'),
-    'port' => (int) env('RSC_PORT', 7940),
-
-    'socket_path' => env('RSC_SOCKET', '/tmp/laravel-rsc.sock'),
-    'functions_dir' => env('RSC_FUNCTIONS_DIR', resource_path('rsc-functions')),
-
-    // Number of worker processes. Each is a separate event loop, so this is the
-    // primary throughput/concurrency knob. Defaults to one per CPU core (capped,
-    // and bounded by the container's memory limit) when RSC_WORKERS is not set.
-    'workers' => (int) env('RSC_WORKERS', 0) ?: System::defaultWorkerCount(),
-
-    'enabled' => env('RSC_ENABLED', true),
-
-    // The built RSC server bundle the worker loads (@vitejs/plugin-rsc output).
-    'bundle' => env('RSC_BUNDLE', base_path('bootstrap/rsc/vite/dist/rsc/index.js')),
-
-    // Name of the global your server components call to reach PHP. Both the
-    // Vite plugin and the generated server actions read it from here, so the
-    // two can never disagree about what the global is called.
-    'host_global' => env('RSC_HOST_GLOBAL', 'rpc'),
-
-    // Public dir + URL for the browser-facing client bundle. Served directly by
-    // the web server (never through PHP); `assets_url` is the Vite base.
-    'assets_dir' => env('RSC_ASSETS_DIR', public_path('build/rsc-vite')),
-    'assets_url' => env('RSC_ASSETS_URL', '/build/rsc-vite/'),
-
-    // How long a CDN may serve a prerendered PPR shell. The shell holds no
-    // request-specific data — the dynamic parts arrive via the Flight request
-    // the client bootstrap makes, which is never cached. Shells go stale on
-    // redeploy, so purge the CDN on deploy or keep the TTL short.
-    'shell_ttl' => (int) env('RSC_SHELL_TTL', 3600),
-    'shell_stale_while_revalidate' => (int) env('RSC_SHELL_SWR', 86400),
-
     /*
-     * Answering host calls over HTTP.
+     * Answering host calls from the renderer.
      *
-     * The transport the engine is moving to: a renderer in front, this
-     * application behind it answering rpc() over an ordinary POST. Off unless
-     * a secret is set, because the endpoint runs registered functions by name
-     * with none of this application's routing in front of it — a default of
-     * "on and unauthenticated" is the kind that ships.
+     * The renderer owns the request and calls back here for data, for the
+     * session, and to ask whether a route may render. Off unless a secret is
+     * set, because this endpoint runs registered functions by name with none of
+     * the application's routing in front of it — a default of "on and
+     * unauthenticated" is the kind that ships.
      *
      * Keep it unreachable from outside as well as authenticated: bind the
      * renderer to loopback, or put this endpoint on a listener only it can
-     * reach.
+     * reach. It can serve a unix socket, which HTTP runs over unchanged and
+     * which opens no port at all.
      */
+    /*
+     * Where the renderer listens.
+     *
+     * Anything Laravel does not route is handed to it, so an app parked in
+     * ~/Herd works at its own .test domain with nothing else configured. The
+     * fallback only runs when no real route matched, so the endpoint below and
+     * the app's own routes always win.
+     *
+     * Null by default, and only in development does that mean "off" — there
+     * the hot file below supplies the url while a dev server is running.
+     *
+     * Setting it in production opts into serving pages THROUGH Laravel, and
+     * costs a worker for the length of every render while the renderer calls
+     * back into this same application for data. With W workers that caps
+     * concurrent renders at W-1, and if every worker is blocked proxying, the
+     * calls have nobody to answer them. Give the host calls their own PHP-FPM
+     * pool if you do it.
+     *
+     * The alternative needs no proxy and no setting: point the domain at the
+     * renderer and let it call back here. A worker is then held for the length
+     * of a host CALL rather than a whole render.
+     */
+    'renderer_url' => env('RSC_RENDERER_URL'),
+
+    /*
+     * Written by the dev server while it runs, and removed when it stops.
+     *
+     * Read before renderer_url, because a dev server chooses its port at
+     * runtime: 5173 is the most contended port on a developer's machine, and
+     * Vite moves to the next free one without saying so. Following the file
+     * means another project running does not silently break this one.
+     */
+    'hot_file' => env('RSC_HOT_FILE', public_path('rsc-hot')),
+    'renderer_timeout' => (float) env('RSC_RENDERER_TIMEOUT', 60),
+
     'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
 
-    'callback_timeout' => 5,
-    'stream_timeout' => (int) env('RSC_STREAM_TIMEOUT', 30),
-    'static_path' => env('RSC_STATIC_PATH', storage_path('framework/rsc-static')),
-    'body_size_limit' => env('RSC_BODY_SIZE_LIMIT', '1mb'),
-
-    'entry_points' => array_filter(
-        explode(',', env('RSC_ENTRY_POINTS', '')),
-    ),
+    /*
+     * Name of the global your server components call to reach PHP.
+     *
+     * The Vite plugin and the generated server actions both read it from here,
+     * so it is written down once. Changing it changes what app code calls.
+     */
+    'host_global' => env('RSC_HOST_GLOBAL', 'rpc'),
 ];

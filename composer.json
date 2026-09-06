@@ -1,6 +1,6 @@
 {
     "name": "rsc-kit/laravel",
-    "description": "React Server Components for Laravel, rendered by a JavaScript runtime over a local socket",
+    "description": "React Server Components for Laravel: the renderer serves the request, Laravel answers it",
     "type": "library",
     "keywords": [
         "laravel",
@@ -33,10 +33,7 @@
     "autoload": {
         "psr-4": {
             "RscKit\\": "src/"
-        },
-        "files": [
-            "src/helpers.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
@@ -52,10 +49,7 @@
         "laravel": {
             "providers": [
                 "RscKit\\RscKitServiceProvider"
-            ],
-            "aliases": {
-                "Rsc": "RscKit\\Facades\\Rsc"
-            }
+            ]
         }
     },
     "config": {

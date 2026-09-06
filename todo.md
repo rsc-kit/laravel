@@ -109,4 +109,9 @@ seek sponsorship from render, laravel cloud, cloudflare, vercel and netlify
   worth a line wherever deployment behind a proxy is described.
 
 
-support mcp and skills  
+support mcp and skills      
+
+
+I get a min flash for adding items to optimistic page after the server response return
+Action revalidate should be more smoother
+can prefetch form actually pass the data to prefetch route to resolve instantly?
