@@ -128,6 +128,28 @@ class PrerenderService
             ];
         }
 
+        // A render that failed is not a page to freeze — it is a page that
+        // needs a request.
+        //
+        // React reports a failed row inside the payload rather than by
+        // rejecting — a rejection inside a Suspense boundary never reaches the
+        // caller — so the render "succeeds" and the result looks storable. It
+        // is not: the browser decodes that row, throws "An error occurred in
+        // the Server Components render", unmounts the document, and shows a
+        // blank page with the error nowhere near the cause. Worse, the file
+        // outlives the build, so every visitor gets it until someone rebuilds.
+        //
+        // Reported as dynamic rather than as a build error, because that is
+        // what it means: this render happens with no host installed (see
+        // rscWithoutCallbacks above), so a page whose data comes from PHP
+        // cannot be frozen and must be served on demand. Failing the build
+        // instead would stop anyone shipping a perfectly good page.
+        //
+        // The JS prerenderer already refuses these. This pass never learned to.
+        if (self::payloadFailed($result['rscPayload'] ?? '')) {
+            return ['type' => 'dynamic', 'reason' => 'the render reported an error'];
+        }
+
         $version = $rscResponse->getVersion();
 
         // Apply page metadata (title, og:image, icons, etc.) from the RSC bundle
@@ -496,6 +518,19 @@ class PrerenderService
         }
 
         return false;
+    }
+
+    /**
+     * Whether a Flight payload carries an error row.
+     *
+     * React writes one as `<id>:E{...}` — a row the client throws when it
+     * reaches it. Matched on the row prefix rather than anywhere in the text,
+     * because a page that merely contains the characters E{ in its content is
+     * not a failed render.
+     */
+    private static function payloadFailed(string $payload): bool
+    {
+        return preg_match('/(^|\n)[0-9a-f]+:E\{/i', $payload) === 1;
     }
 
     /**

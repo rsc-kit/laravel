@@ -59,6 +59,22 @@ return [
     'shell_ttl' => (int) env('RSC_SHELL_TTL', 3600),
     'shell_stale_while_revalidate' => (int) env('RSC_SHELL_SWR', 86400),
 
+    /*
+     * Answering host calls over HTTP.
+     *
+     * The transport the engine is moving to: a renderer in front, this
+     * application behind it answering rpc() over an ordinary POST. Off unless
+     * a secret is set, because the endpoint runs registered functions by name
+     * with none of this application's routing in front of it — a default of
+     * "on and unauthenticated" is the kind that ships.
+     *
+     * Keep it unreachable from outside as well as authenticated: bind the
+     * renderer to loopback, or put this endpoint on a listener only it can
+     * reach.
+     */
+    'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
+    'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
+
     'callback_timeout' => 5,
     'stream_timeout' => (int) env('RSC_STREAM_TIMEOUT', 30),
     'static_path' => env('RSC_STATIC_PATH', storage_path('framework/rsc-static')),
