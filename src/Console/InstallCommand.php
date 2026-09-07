@@ -49,11 +49,15 @@ class InstallCommand extends Command
 
         $this->newLine();
         $this->components->info('Done. Next:');
-        $this->line('  npm install        (or bun install)');
-        $this->line('  npm run rsc:dev    the renderer, which is also the Vite dev server');
+        $this->line('  npm install    (or bun install)');
+        $this->line('  npm run dev    your asset pipeline AND the renderer');
         $this->newLine();
         $this->line('  Then open this application at its own url. Laravel hands any request');
         $this->line('  it does not route to the renderer, so pages work with nothing else set.');
+        $this->newLine();
+        $this->line('  That needs a server with more than one worker — Herd, Valet, FPM and');
+        $this->line('  Octane all are. `php artisan serve` is not, and cannot render a page');
+        $this->line('  here; open the renderer directly instead, at http://localhost:5173.');
         $this->newLine();
 
         return self::SUCCESS;
@@ -116,7 +120,7 @@ class InstallCommand extends Command
         // to it is move somebody's lines around.
         file_put_contents($env, rtrim($contents, "\n")."\n\n"
             ."# Shared with the RSC renderer. Both processes read this, and a\n"
-            ."# mismatch answers every host call with 401.\n"
+            ."# mismatch answers every host call with 403.\n"
             ."RSC_HOST_CALL_SECRET=\"{$secret}\"\n");
 
         $this->components->twoColumnDetail('RSC_HOST_CALL_SECRET', '<fg=green>generated in .env</>');
