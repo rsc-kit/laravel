@@ -2,20 +2,6 @@
 
 return [
     /*
-     * Answering host calls from the renderer.
-     *
-     * The renderer owns the request and calls back here for data, for the
-     * session, and to ask whether a route may render. Off unless a secret is
-     * set, because this endpoint runs registered functions by name with none of
-     * the application's routing in front of it — a default of "on and
-     * unauthenticated" is the kind that ships.
-     *
-     * Keep it unreachable from outside as well as authenticated: bind the
-     * renderer to loopback, or put this endpoint on a listener only it can
-     * reach. It can serve a unix socket, which HTTP runs over unchanged and
-     * which opens no port at all.
-     */
-    /*
      * Where the renderer listens.
      *
      * Anything Laravel does not route is handed to it, so an app parked in
@@ -50,6 +36,20 @@ return [
     'hot_file' => env('RSC_HOT_FILE', public_path('rsc-hot')),
     'renderer_timeout' => (float) env('RSC_RENDERER_TIMEOUT', 60),
 
+    /*
+     * Answering host calls from the renderer.
+     *
+     * The renderer owns the request and calls back here for data, for the
+     * session, and to ask whether a route may render. The endpoint is not
+     * registered at all unless a secret is set — it runs registered functions
+     * by name with none of the application's routing in front of it, and a
+     * default of "on and unauthenticated" is the kind that ships.
+     *
+     * Keep it unreachable from outside as well as authenticated: bind the
+     * renderer to loopback, or put this endpoint on a listener only it can
+     * reach. It can serve a unix socket, which HTTP runs over unchanged and
+     * which opens no port at all.
+     */
     'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
 

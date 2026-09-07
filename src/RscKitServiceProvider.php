@@ -9,6 +9,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use RscKit\Console\InstallCommand;
 use RscKit\Console\RscActionManifestCommand;
 use RscKit\Http\HostCallController;
 use RscKit\Http\HostCallDispatcher;
@@ -75,7 +76,7 @@ class RscKitServiceProvider extends ServiceProvider
                 __DIR__.'/../config/rsc.php' => config_path('rsc.php'),
             ], 'rsc-config');
 
-            $this->commands([RscActionManifestCommand::class]);
+            $this->commands([InstallCommand::class, RscActionManifestCommand::class]);
         }
     }
 
