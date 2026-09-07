@@ -39,7 +39,11 @@ from here, because nothing here renders.
 ## Development Setup
 
 - Package source: `/Users/ramonmalcolm/Herd/lara-bun`
-- Integration app: `/Users/ramonmalcolm/Herd/larabun-docs` — run `php artisan serve` and `bun server.ts` side by side; both read `RSC_HOST_CALL_SECRET`
+- Integration app: `/Users/ramonmalcolm/Herd/larabun-docs` — local test bed only, never pushed. Both read `RSC_HOST_CALL_SECRET`.
+  Serve it through Herd. `php artisan serve` is `php -S`, one worker, and cannot host this: the proxying worker holds
+  the only one, the page's host calls reach a server with nobody to answer them, and they time out after 30s into a 200
+  whose data is missing. `RendererProxy` refuses that shape up front rather than letting it hang. The way around without
+  Herd is to open the renderer directly on :5173 and let Laravel answer host calls only.
 - After package changes: `composer update rsc-kit/laravel` in consuming apps
 - After TS changes: rebuild with Vite, then restart the renderer
 

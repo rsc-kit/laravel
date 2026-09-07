@@ -3,6 +3,7 @@
 namespace RscKit\Http;
 
 use Illuminate\Http\Request;
+use RscKit\ProxyWouldDeadlockException;
 use RscKit\RendererNotRunningException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -23,9 +24,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * One thing to know before running this under load: a PHP worker is occupied
  * for the length of a render, and the renderer calls back into this same
  * application for its data. With too few workers those calls have nobody to
- * answer them and the two sides wait for each other. Development is fine —
- * Herd runs several — and a deployment that cares should put the renderer in
- * front and let it call back here, which needs no proxy at all.
+ * answer them and the two sides wait for each other. Herd, Valet and FPM all
+ * run several, so development is fine there; `php artisan serve` runs ONE, and
+ * is refused outright — see ProxyWouldDeadlockException. A deployment that
+ * cares should put the renderer in front and let it call back here, which
+ * needs no proxy at all.
  */
 class RendererProxy
 {
@@ -36,8 +39,35 @@ class RendererProxy
         'content-length', 'host',
     ];
 
+    /**
+     * Set by the renderer on a request it is handing back.
+     *
+     * Both fallbacks forward what they cannot route to the other, so without
+     * this a url neither owns bounces between them until something gives out.
+     */
+    public const FALLBACK_HEADER = 'X-Rsc-Renderer-Fallback';
+
+    /**
+     * Set on what this proxy forwards, so the renderer does not forward it back.
+     *
+     * The renderer hands a url it does not own to the backend, which is what
+     * makes its own origin a whole application. But a request that ARRIVED from
+     * the backend has already been through Laravel's route table, so sending it
+     * there again only asks the same question twice — a wasted round trip on
+     * every 404, and the outer half of the loop FALLBACK_HEADER catches on the
+     * way back. Cheaper and clearer to say so on the way out.
+     */
+    public const PROXIED_HEADER = 'X-Rsc-Proxied-By-Backend';
+
     public function __invoke(Request $request): StreamedResponse
     {
+        // Already been to the renderer, which did not own it either. Answering
+        // it here is Laravel's job and a 404 is the honest answer — forwarding
+        // it back is the loop.
+        if ($request->headers->has(self::FALLBACK_HEADER)) {
+            abort(404);
+        }
+
         $renderer = $this->rendererUrl();
 
         // Nothing to hand this to, and what that means depends on who is
@@ -60,6 +90,12 @@ class RendererProxy
             }
 
             abort(404);
+        }
+
+        // A render this server cannot survive forwarding. Checked before the
+        // request is made rather than after it times out: see the exception.
+        if (($backend = $this->deadlockingBackend($request)) !== null) {
+            throw new ProxyWouldDeadlockException($backend);
         }
 
         $target = rtrim($renderer, '/').$request->getRequestUri();
@@ -213,6 +249,8 @@ class RendererProxy
             }
         }
 
+        $headers[] = self::PROXIED_HEADER.': 1';
+
         // The visitor's own address and the name they typed, not this hop's.
         $headers[] = 'X-Forwarded-For: '.$request->ip();
         $headers[] = 'X-Forwarded-Host: '.$request->getHost();
@@ -251,5 +289,35 @@ class RendererProxy
         }
 
         return config('rsc.renderer_url') ?: null;
+    }
+
+    /**
+     * The backend the renderer will call, when calling it cannot possibly work.
+     *
+     * Three things have to be true together, and any one of them alone is
+     * fine. The SAPI is `php -S`, which is the only server that runs a single
+     * worker by default. That server was not given more — Laravel passes
+     * PHP_CLI_SERVER_WORKERS through only with --no-reload, so its absence
+     * here means one worker whatever the variable says elsewhere. And the
+     * renderer's backend resolves to this very origin, so its host calls come
+     * back to the worker that is already busy forwarding this page.
+     *
+     * The backend is read the way the engine reads it — RSC_BACKEND, then
+     * APP_URL — because both processes read the same .env, and guessing
+     * differently here would report a deadlock that is not there.
+     */
+    private function deadlockingBackend(Request $request, string $sapi = PHP_SAPI): ?string
+    {
+        if ($sapi !== 'cli-server' || (int) getenv('PHP_CLI_SERVER_WORKERS') >= 2) {
+            return null;
+        }
+
+        $backend = env('RSC_BACKEND') ?: config('app.url');
+
+        if (! is_string($backend) || $backend === '') {
+            return null;
+        }
+
+        return rtrim($backend, '/') === $request->getSchemeAndHttpHost() ? $backend : null;
     }
 }
