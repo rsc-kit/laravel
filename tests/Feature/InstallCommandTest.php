@@ -130,7 +130,7 @@ it('says so when the installed renderer is not the one this pairs with', functio
 it('says nothing when it is', function () {
     $manifest = base_path('node_modules/@rsc-kit/core/package.json');
     mkdir(dirname($manifest), 0777, true);
-    file_put_contents($manifest, json_encode(['version' => '0.6.1']));
+    file_put_contents($manifest, json_encode(['version' => '0.7.1']));
 
     // Reported, not enforced: a mismatch is usually someone testing an
     // unreleased engine, and refusing to install over that would be worse.
