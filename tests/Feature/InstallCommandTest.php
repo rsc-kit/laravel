@@ -106,3 +106,38 @@ it('prints the command for the JavaScript half rather than doing it in PHP', fun
         ->expectsOutputToContain('rsc-kit init --host=laravel')
         ->assertSuccessful();
 });
+
+/**
+ * The two halves ship separately and cannot depend on each other.
+ *
+ * One is a composer package and the other is on npm, so nothing resolves the
+ * pairing — and a renderer out of step does not fail at boot. It fails at
+ * whichever request first needs the part that changed, which is the kind of
+ * failure worth naming at install time.
+ */
+it('says so when the installed renderer is not the one this pairs with', function () {
+    $manifest = base_path('node_modules/@rsc-kit/core/package.json');
+    mkdir(dirname($manifest), 0777, true);
+    file_put_contents($manifest, json_encode(['version' => '0.4.2']));
+
+    // A short substring on purpose: the warning wraps, and a phrase that
+    // spans two lines matches neither.
+    $this->artisan('rsc:install --skip-js')
+        ->expectsOutputToContain('0.4.2')
+        ->assertSuccessful();
+});
+
+it('says nothing when it is', function () {
+    $manifest = base_path('node_modules/@rsc-kit/core/package.json');
+    mkdir(dirname($manifest), 0777, true);
+    file_put_contents($manifest, json_encode(['version' => '0.6.1']));
+
+    // Reported, not enforced: a mismatch is usually someone testing an
+    // unreleased engine, and refusing to install over that would be worse.
+    $this->artisan('rsc:install --skip-js')->assertSuccessful();
+});
+
+it('does not call a renderer that is not installed yet a mismatch', function () {
+    // `npm install` is the next thing the command tells them to run.
+    $this->artisan('rsc:install --skip-js')->assertSuccessful();
+});
