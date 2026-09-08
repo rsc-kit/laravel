@@ -229,3 +229,38 @@ it('tells the renderer this already came from here', function () {
 
     expect($headers)->toContain(RendererProxy::PROXIED_HEADER.': 1');
 });
+
+/**
+ * A server action is a POST, and the proxy used to refuse one.
+ *
+ * Route::fallback() registers GET and HEAD only. A server action posts to
+ * /_rsc/action — a path Laravel does not route — so the fallback matched the
+ * uri, refused the method, and answered 405 before the renderer ever saw it.
+ * The browser then decoded a failed row and unmounted the document, so the
+ * symptom was a blank page from a working application, on every action ever
+ * submitted through this proxy.
+ */
+it('hands the renderer a server action, which is a POST', function () {
+    file_put_contents(config('rsc.hot_file'), 'http://127.0.0.1:1');
+
+    // Not 405. Reaching the renderer is the point; that it is not running at
+    // 127.0.0.1:1 is this test's business, not the router's.
+    expect($this->post('/_rsc/action')->status())->not->toBe(405);
+});
+
+it('hands it every method a page might use, not only the ones pages use', function () {
+    file_put_contents(config('rsc.hot_file'), 'http://127.0.0.1:1');
+
+    foreach (['put', 'patch', 'delete'] as $method) {
+        expect($this->{$method}('/_rsc/action')->status())->not->toBe(405);
+    }
+});
+
+it('still lets a real route win, whatever the method', function () {
+    // ->fallback() is what keeps this last. An ordinary any-method catch-all
+    // would shadow every route declared after it.
+    Route::post('/mine', fn () => 'mine');
+    file_put_contents(config('rsc.hot_file'), 'http://127.0.0.1:1');
+
+    expect($this->post('/mine')->getContent())->toBe('mine');
+});

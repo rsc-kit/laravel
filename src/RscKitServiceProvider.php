@@ -30,6 +30,16 @@ use RscKit\Http\RendererProxy;
  */
 class RscKitServiceProvider extends ServiceProvider
 {
+    /**
+     * What the renderer is allowed to be handed.
+     *
+     * GET and HEAD are pages. POST is a server action, and the rest are here
+     * because a route file is the app's to write — a page that renders a form
+     * with method="delete" should reach the renderer rather than a 405 from a
+     * framework that was only ever asked about pages.
+     */
+    private const PROXIED_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/rsc.php', 'rsc');
@@ -133,6 +143,21 @@ class RscKitServiceProvider extends ServiceProvider
         // starts and stops long after routes are registered, so a check here
         // would read whether one was running at boot rather than now — and an
         // app booted before `vite dev` would serve 404s until it restarted.
-        Route::fallback(RendererProxy::class)->middleware('web');
+        //
+        // Every method, not Route::fallback(), which registers GET and HEAD
+        // only. A server action is a POST to /_rsc/action — a path Laravel does
+        // not route — so the GET-only fallback matched the uri, refused the
+        // method, and answered 405. The action never reached the renderer, and
+        // the browser decoded a failed row and unmounted the document: a blank
+        // page, from a working application, for every action ever submitted
+        // through this proxy.
+        //
+        // ->fallback() is what keeps it last regardless of the methods, so a
+        // real route still wins. Registering this as an ordinary any-method
+        // route would shadow anything declared after it.
+        Route::addRoute(self::PROXIED_METHODS, '{rscFallbackPlaceholder}', RendererProxy::class)
+            ->where('rscFallbackPlaceholder', '.*')
+            ->fallback()
+            ->middleware('web');
     }
 }
