@@ -18,6 +18,9 @@
         }
     ],
     "license": "MIT",
+    "suggest": {
+        "@rsc-kit/core": "The renderer, installed with npm rather than composer. This release pairs with ^0.6 — rsc:install checks the installed version and says so if it disagrees."
+    },
     "require": {
         "php": "^8.3",
         "illuminate/console": "^13.0",

@@ -3,6 +3,7 @@
 namespace RscKit\Console;
 
 use Illuminate\Console\Command;
+use RscKit\RscKitServiceProvider;
 use Symfony\Component\Process\Process;
 
 /**
@@ -37,6 +38,9 @@ class InstallCommand extends Command
         $this->ensureSecret();
 
         if ($this->option('skip-js')) {
+            // What is already here, since this run is not about to change it.
+            $this->checkEngineVersion();
+
             $this->components->warn('Skipped the JavaScript half. Run it yourself:');
             $this->line('  '.$this->jsCommand());
 
@@ -46,6 +50,11 @@ class InstallCommand extends Command
         if (! $this->runJavaScriptHalf()) {
             return self::FAILURE;
         }
+
+        // After, not before. On a first install there is no node_modules to
+        // read until this step has run — and a first install is exactly when a
+        // mismatch is most likely and least expected.
+        $this->checkEngineVersion();
 
         $this->newLine();
         $this->components->info('Done. Next:');
@@ -61,6 +70,55 @@ class InstallCommand extends Command
         $this->newLine();
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Whether the renderer installed here is the one this release pairs with.
+     *
+     * The two halves cannot depend on each other — one is a composer package
+     * and the other is on npm — so nothing resolves this for us. Reported
+     * rather than enforced: a mismatch is usually deliberate (someone testing
+     * an unreleased engine) and refusing to install over it would be worse
+     * than saying so.
+     *
+     * A version behind does not fail at boot. It fails at whichever request
+     * first needs the part that changed, which is the kind of failure worth
+     * spending twenty lines to name up front.
+     */
+    private function checkEngineVersion(): void
+    {
+        $manifest = base_path('node_modules/@rsc-kit/core/package.json');
+
+        if (! file_exists($manifest)) {
+            // Not installed yet is not a mismatch: `npm install` is the next
+            // thing this command tells them to run.
+            return;
+        }
+
+        $installed = json_decode((string) file_get_contents($manifest), true)['version'] ?? null;
+
+        if (! is_string($installed)) {
+            return;
+        }
+
+        $wanted = RscKitServiceProvider::ENGINE_CONSTRAINT;
+
+        // Major and minor, which is the whole of the promise before 1.0: a
+        // minor carries breaking changes, a patch does not.
+        $want = ltrim($wanted, '^~');
+        $matches = str_starts_with($installed, $want.'.') || $installed === $want;
+
+        if ($matches) {
+            $this->components->twoColumnDetail('@rsc-kit/core', "<fg=gray>{$installed}</>");
+
+            return;
+        }
+
+        $this->components->warn(
+            "This package pairs with @rsc-kit/core {$wanted}, and {$installed} is installed. "
+            .'They ship separately, so nothing resolves this for you — and a renderer out of step '
+            .'does not fail at boot, it fails at whichever request first needs the part that changed.'
+        );
     }
 
     /**

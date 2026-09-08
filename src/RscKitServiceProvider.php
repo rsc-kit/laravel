@@ -31,6 +31,17 @@ use RscKit\Http\RendererProxy;
 class RscKitServiceProvider extends ServiceProvider
 {
     /**
+     * The engine release this one is built against.
+     *
+     * The two halves ship separately and cannot depend on each other: one is a
+     * composer package, the other is on npm. So the pairing is written down
+     * here and checked by rsc:install, rather than left to a sentence in a
+     * changelog — a renderer a major behind does not fail at boot, it fails at
+     * whichever request first needs the part that changed.
+     */
+    public const ENGINE_CONSTRAINT = '^0.6';
+
+    /**
      * What the renderer is allowed to be handed.
      *
      * GET and HEAD are pages. POST is a server action, and the rest are here
