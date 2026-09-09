@@ -103,7 +103,7 @@ it('prints the command for the JavaScript half rather than doing it in PHP', fun
     File::put($this->base.'/.env', "APP_NAME=Laravel\n");
 
     $this->artisan('rsc:install --skip-js')
-        ->expectsOutputToContain('rsc-kit init --host=laravel')
+        ->expectsOutputToContain('rsc-kit@latest init --host=laravel')
         ->assertSuccessful();
 });
 
