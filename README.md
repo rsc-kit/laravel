@@ -48,12 +48,13 @@ unchanged and which opens no port at all.
 
 ```sh
 composer require rsc-kit/laravel
-bun add @rsc-kit/core react react-dom
+php artisan rsc:install
 ```
 
-```env
-RSC_HOST_CALL_SECRET=a-long-random-string
-```
+`rsc:install` does the PHP half itself — publishes `config/rsc.php`, generates
+`RSC_HOST_CALL_SECRET` into your `.env` — and runs `rsc-kit init` for the
+JavaScript half. Nothing you already have is overwritten: where a file exists,
+the exact edit is printed for you to make instead.
 
 A function your components can call:
 
@@ -97,9 +98,10 @@ below that route renders, and a refusal is the answer to the request.
 
 ## Requirements
 
-- PHP 8.2+
-- Laravel 11+
-- [Bun](https://bun.sh) or Node 24+, for the renderer
+- PHP 8.3+
+- Laravel 13+
+- [Bun](https://bun.sh) or Node 24+, for the renderer and the build
+- Vite 8 — the plugin needs it, and a Laravel application ships an older one
 - React 19
 
 ## Documentation

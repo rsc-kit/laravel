@@ -251,7 +251,12 @@ class InstallCommand extends Command
             $arguments[] = '--yes';
         }
 
-        return $runner.' rsc-kit '.implode(' ', $arguments);
+        // @latest, and not decoration: bunx and npx both reuse the copy they
+        // downloaded the first time, so a machine that has run this before
+        // keeps installing from whatever version that was — however many
+        // releases later, writing a config the current engine refuses. Naming
+        // the tag is what makes them look again.
+        return $runner.' rsc-kit@latest '.implode(' ', $arguments);
     }
 
     private function hasBun(): bool
