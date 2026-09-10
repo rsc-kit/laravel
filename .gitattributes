@@ -1,0 +1,22 @@
+# Normalise line endings in the repository, whatever the machine committing.
+* text=auto
+
+# What not to ship.
+#
+# Composer builds its dist archive from what git tracks, so without this every
+# `composer require` downloads the whole repository — the test suite, the notes
+# file, the editor instructions. It is not only size: todo.md is a scratchpad
+# of open questions, and it was landing in vendor/ on other people's machines.
+#
+# Kept: src/, config/ and README/LICENSE, plus resources/, which is where a
+# package exposes a Laravel Boost skill and so has to be installed to be found.
+/.claude            export-ignore
+/.github            export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/CLAUDE.md          export-ignore
+/PROTOCOL.md        export-ignore
+/bun.lock           export-ignore
+/phpunit.xml        export-ignore
+/todo.md            export-ignore
+/tests              export-ignore
