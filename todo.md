@@ -115,3 +115,28 @@ support mcp and skills
 I get a min flash for adding items to optimistic page after the server response return
 Action revalidate should be more smoother
 can prefetch form actually pass the data to prefetch route to resolve instantly?
+
+
+
+ Next explain this backend fallback concept because I don't fully understand it and was tired when it was being implemented. For example I deploy a laravel app to kubernetes will this fallback url be exposed to the public internet and if so is it required 
+
+ Handle 404
+
+ show error when dev server set
+
+ Show how to migrate from nextjs
+
+ Can form prefetch maybe prefetch the actual data as well?
+
+
+ src/rsc-env.d.ts
+src/rsc-types.d.ts
+src/rsc-routes.d.ts
+src/rsc-engine.d.ts
+
+
+Remote live/get ()
+Stream server components
+Sometheing like swr
+
+API endpoints
