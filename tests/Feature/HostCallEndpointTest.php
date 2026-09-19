@@ -205,6 +205,65 @@ describe('revalidation', function () {
     });
 });
 
+describe('a batch', function () {
+    // Several calls the renderer issued in one tick of a render, answered in
+    // order. One Laravel request for a page's parallel reads rather than one
+    // each - and every call still answers as itself.
+    it('answers every call in order, each with the status it would have had alone', function () {
+        $dispatcher = dispatcherWith([
+            'Orders.recent' => fn (int $limit) => array_fill(0, $limit, 'order'),
+            'Orders.create' => fn () => throw ValidationException::withMessages(['name' => ['Taken.']]),
+            'Me.session' => fn () => throw new AuthenticationException,
+        ]);
+
+        $answer = $dispatcher->dispatch(['calls' => [
+            ['function' => 'Orders.recent', 'args' => [2]],
+            ['function' => 'Orders.create', 'args' => []],
+            ['function' => 'Me.session', 'args' => []],
+            ['function' => 'Nope', 'args' => []],
+        ]]);
+
+        expect($answer['status'])->toBe(200);
+
+        $replies = $answer['reply']['replies'];
+
+        expect($replies)->toHaveCount(4);
+        expect($replies[0])->toMatchArray(['status' => 200, 'result' => ['order', 'order']]);
+        expect($replies[1]['status'])->toBe(422);
+        expect($replies[1]['validationErrors'])->toBe(['name' => ['Taken.']]);
+        expect($replies[2])->toMatchArray(['status' => 401, 'unauthenticated' => true]);
+        expect($replies[3]['status'])->toBe(404);
+    });
+
+    it('keeps each call\'s revalidation with that call', function () {
+        $dispatcher = dispatcherWith([
+            'Orders.create' => function () {
+                app(Revalidation::class)->mark('orders');
+
+                return null;
+            },
+            'Orders.recent' => fn () => [],
+        ]);
+
+        $answer = $dispatcher->dispatch(['calls' => [
+            ['function' => 'Orders.create', 'args' => []],
+            ['function' => 'Orders.recent', 'args' => []],
+        ]]);
+
+        expect($answer['reply']['replies'][0]['revalidate'])->toBe(['orders']);
+        expect($answer['reply']['replies'][1])->not->toHaveKey('revalidate');
+    });
+
+    it('refuses an envelope that is not a list of calls', function () {
+        $dispatcher = dispatcherWith([]);
+
+        expect($dispatcher->dispatch(['calls' => []])['status'])->toBe(400);
+        expect($dispatcher->dispatch(['calls' => 'Orders.recent'])['status'])->toBe(400);
+        // A call inside that is not an object is that call's 400, not the batch's.
+        expect($dispatcher->dispatch(['calls' => ['x']])['reply']['replies'][0]['status'])->toBe(400);
+    });
+});
+
 describe('the route', function () {
     it('is not registered without a secret', function () {
         // Additive: an application that has not opted in still uses the

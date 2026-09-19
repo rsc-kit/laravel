@@ -89,7 +89,7 @@ export default async function Home() {
 Guarding a route, without declaring one:
 
 ```ts
-// resources/js/app/admin/route.ts
+// resources/js/app/admin/middleware.ts
 export const middleware = ['auth', 'can:update,post'];
 ```
 

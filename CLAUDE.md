@@ -24,7 +24,7 @@ HTTP, so PHP no longer locates, launches or supervises a runtime.
 
 - PHP follows Laravel conventions with Pint formatting
 - Client components use `"use client"`, server actions `"use server"`
-- Route middleware is declared in a colocated `route.ts`, in Laravel's own vocabulary
+- Route middleware is declared in a colocated `middleware.ts`, in Laravel's own vocabulary
 - Always run `vendor/bin/pint --dirty --format agent` after modifying PHP files
 
 ## Testing

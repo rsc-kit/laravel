@@ -65,6 +65,14 @@ class HostCallDispatcher
      */
     public function dispatch(?array $body): array
     {
+        // A batch: several calls the renderer issued in one tick of a render,
+        // answered in order, each with the status it would have had alone.
+        // One Laravel request for a page's parallel reads rather than one
+        // each - the framework boots once, the session is read once.
+        if (isset($body['calls'])) {
+            return $this->dispatchBatch($body['calls']);
+        }
+
         $name = $body['function'] ?? null;
 
         if (! is_string($name) || $name === '') {
@@ -142,6 +150,29 @@ class HostCallDispatcher
         }
 
         return ['status' => 200, 'reply' => $reply];
+    }
+
+    /**
+     * @param  mixed  $calls  what the body carried under "calls"
+     * @return array{status: int, reply: array<string, mixed>}
+     */
+    private function dispatchBatch(mixed $calls): array
+    {
+        if (! is_array($calls) || $calls === [] || ! array_is_list($calls)) {
+            return $this->fail(400, 'A batch needs a non-empty "calls" list.');
+        }
+
+        $replies = [];
+
+        // In order, and every one of them: a refusal in the third call is
+        // that call's answer, not a reason to leave the fourth unanswered.
+        foreach ($calls as $call) {
+            ['status' => $status, 'reply' => $reply] = $this->dispatch(is_array($call) ? $call : null);
+
+            $replies[] = ['status' => $status] + $reply;
+        }
+
+        return ['status' => 200, 'reply' => ['replies' => $replies]];
     }
 
     /**
