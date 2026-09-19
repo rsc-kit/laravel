@@ -74,7 +74,7 @@ class Posts
 A page that calls it:
 
 ```tsx
-// resources/js/rsc/app/page.tsx
+// resources/js/app/page.tsx
 export default async function Home() {
   const posts = await rpc<Post[]>('Posts.latest');
 
@@ -89,7 +89,7 @@ export default async function Home() {
 Guarding a route, without declaring one:
 
 ```ts
-// resources/js/rsc/app/admin/route.ts
+// resources/js/app/admin/route.ts
 export const middleware = ['auth', 'can:update,post'];
 ```
 
