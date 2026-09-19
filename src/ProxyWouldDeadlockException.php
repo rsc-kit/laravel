@@ -39,8 +39,10 @@ class ProxyWouldDeadlockException extends RuntimeException implements HttpExcept
                 .'page data, with nobody left to answer. That is a limit of the server, not of '
                 .'this package: it cannot serve a second request while it is waiting on the '
                 ."first.\n\n"
-                .'Serve the application through Herd, Valet, FPM or Octane, which all run '
-                ."several workers.\n\n"
+                .'Give it workers: PHP_CLI_SERVER_WORKERS=4 in .env, and `php artisan serve '
+                .'--no-reload` - without that flag Laravel warns that it cannot respect the '
+                .'variable and starts one worker anyway. Or serve the application through Herd, '
+                ."Valet, FPM or Octane, which all run several.\n\n"
                 .'Or open the renderer directly — http://localhost:5173 by default — and skip '
                 .'the proxy altogether. Laravel then only answers host calls, one short request '
                 .'each, which a single worker handles fine. The renderer owns only the RSC '
