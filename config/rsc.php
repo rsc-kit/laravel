@@ -50,14 +50,18 @@ return [
      * reach. It can serve a unix socket, which HTTP runs over unchanged and
      * which opens no port at all.
      */
+    /*
+     * The route table the build writes, read so the renderer's pages win.
+     *
+     * With Laravel in front, everything it does not route falls through to the
+     * renderer - but a url Laravel does route never gets there, and a fresh
+     * application routes `/` to its welcome page. The renderer's pages are
+     * registered from this file ahead of routes/web.php, so the rule is the
+     * one the docs state: if the React tree has it, React renders it.
+     * Written by `vite` and `vite build` into the plugin's outDir.
+     */
+    'routes_manifest' => env('RSC_ROUTES_MANIFEST', base_path('bootstrap/rsc/vite/routes.json')),
+
     'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
-
-    /*
-     * Name of the global your server components call to reach PHP.
-     *
-     * The Vite plugin and the generated server actions both read it from here,
-     * so it is written down once. Changing it changes what app code calls.
-     */
-    'host_global' => env('RSC_HOST_GLOBAL', 'rpc'),
 ];

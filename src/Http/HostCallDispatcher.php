@@ -65,6 +65,14 @@ class HostCallDispatcher
      */
     public function dispatch(?array $body): array
     {
+        // A batch: several calls the renderer issued in one tick of a render,
+        // answered in order, each with the status it would have had alone.
+        // One Laravel request for a page's parallel reads rather than one
+        // each - the framework boots once, the session is read once.
+        if (isset($body['calls'])) {
+            return $this->dispatchBatch($body['calls']);
+        }
+
         $name = $body['function'] ?? null;
 
         if (! is_string($name) || $name === '') {
@@ -142,6 +150,72 @@ class HostCallDispatcher
         }
 
         return ['status' => 200, 'reply' => $reply];
+    }
+
+    /**
+     * @param  mixed  $calls  what the body carried under "calls"
+     * @return array{status: int, reply: array<string, mixed>}
+     */
+    private function dispatchBatch(mixed $calls): array
+    {
+        if (! is_array($calls) || $calls === [] || ! array_is_list($calls)) {
+            return $this->fail(400, 'A batch needs a non-empty "calls" list.');
+        }
+
+        $replies = [];
+
+        // In order, and every one of them: a refusal in the third call is
+        // that call's answer, not a reason to leave the fourth unanswered.
+        foreach ($calls as $call) {
+            ['status' => $status, 'reply' => $reply] = $this->dispatch(is_array($call) ? $call : null);
+
+            $replies[] = ['status' => $status] + $reply;
+        }
+
+        return ['status' => 200, 'reply' => ['replies' => $replies]];
+    }
+
+    /**
+     * Whether a body is a batch the controller can stream, or what is wrong with it.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{status: int, reply: array<string, mixed>}|null a refusal, or null for a batch that is one
+     */
+    public function batchRefusal(array $body): ?array
+    {
+        if (! isset($body['calls'])) {
+            return null;
+        }
+
+        $calls = $body['calls'];
+
+        if (! is_array($calls) || $calls === [] || ! array_is_list($calls)) {
+            return $this->fail(400, 'A batch needs a non-empty "calls" list.');
+        }
+
+        return null;
+    }
+
+    /**
+     * A batch answered as it goes: one JSON line per call, each the moment
+     * that call has finished, carrying its position in the batch.
+     *
+     * Calls run one after another here - PHP - but a page whose first read
+     * is quick and third is slow paints the first before the third has
+     * begun. Every call is answered as it would have been alone: a refusal
+     * in the third is that call's answer, not a reason to leave the fourth
+     * unanswered.
+     *
+     * @param  list<mixed>  $calls
+     * @return \Generator<int, string> lines, without their newline
+     */
+    public function batch(array $calls): \Generator
+    {
+        foreach ($calls as $index => $call) {
+            ['status' => $status, 'reply' => $reply] = $this->dispatch(is_array($call) ? $call : null);
+
+            yield json_encode(['index' => $index, 'status' => $status] + $reply, JSON_THROW_ON_ERROR);
+        }
     }
 
     /**

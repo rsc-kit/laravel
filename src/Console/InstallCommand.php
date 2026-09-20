@@ -61,8 +61,10 @@ class InstallCommand extends Command
         $this->line('  npm install    (or bun install)');
         $this->line('  npm run dev    your asset pipeline AND the renderer');
         $this->newLine();
-        $this->line('  Then open this application at its own url. Laravel hands any request');
-        $this->line('  it does not route to the renderer, so pages work with nothing else set.');
+        $this->line('  Then open this application at its own url. Every url the React tree');
+        $this->line('  has a page for is the renderer\'s - / included, so the welcome route in');
+        $this->line('  routes/web.php answers nothing while resources/js/app/page.tsx exists -');
+        $this->line('  and everything else is still Laravel\'s.');
         $this->newLine();
         $this->line('  That needs a server with more than one worker — Herd, Valet, FPM and');
         $this->line('  Octane all are. `php artisan serve` is not, and cannot render a page');

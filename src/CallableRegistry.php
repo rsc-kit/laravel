@@ -18,6 +18,7 @@ use ReflectionMethod;
 use ReflectionNamedType;
 use RscKit\Attributes\Authenticated;
 use RscKit\Attributes\Can;
+use RscKit\Support\ActionManifest;
 use RuntimeException;
 
 class CallableRegistry
@@ -50,17 +51,7 @@ class CallableRegistry
      */
     public function discoverFrom(string $directory): void
     {
-        if (! is_dir($directory)) {
-            return;
-        }
-
-        $files = glob($directory.'/*.php');
-
-        if ($files === false) {
-            return;
-        }
-
-        foreach ($files as $file) {
+        foreach (ActionManifest::phpFilesUnder($directory) as $file) {
             $className = $this->resolveClassName($file);
 
             if ($className === null || ! class_exists($className)) {

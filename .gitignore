@@ -36,3 +36,6 @@ tests/fixtures/rsc-app/rsc-types.d.ts
 # here before these rules existed; the suite moved out with the engine.
 bootstrap/
 bun.lock
+
+# Working notes, not part of the package or its history going forward.
+todo.md

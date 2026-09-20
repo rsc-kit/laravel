@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use RscKit\CallableRegistry;
@@ -110,4 +111,40 @@ it('answers an unknown function with 404 and names it', function () {
 
     $response->assertStatus(404);
     expect($response->json('error'))->toContain('Nope.missing');
+});
+
+describe('a batch over the wire', function () {
+    // Answered as it goes: one JSON line per call, carrying its index, so the
+    // renderer resolves a fast read while a slow sibling is still running.
+    // The dispatcher's own tests cover what each line says; this covers the
+    // shape the renderer reads.
+    it('is streamed as one line per call, each with its index and status', function () {
+        registerHostFunction('Orders.recent', fn (int $limit) => array_fill(0, $limit, 'order'));
+        registerHostFunction('Me.session', fn () => throw new AuthenticationException);
+
+        $response = callHost(['calls' => [
+            ['function' => 'Orders.recent', 'args' => [2]],
+            ['function' => 'Me.session', 'args' => []],
+        ]]);
+
+        $response->assertOk();
+        expect($response->headers->get('Content-Type'))->toBe('application/x-ndjson');
+        expect($response->headers->get('X-Accel-Buffering'))->toBe('no');
+
+        $lines = array_map(
+            fn (string $line) => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            explode("\n", trim($response->streamedContent())),
+        );
+
+        expect($lines)->toHaveCount(2);
+        expect($lines[0])->toMatchArray(['index' => 0, 'status' => 200, 'result' => ['order', 'order']]);
+        expect($lines[1])->toMatchArray(['index' => 1, 'status' => 401, 'unauthenticated' => true]);
+    });
+
+    it('refuses an empty batch as one JSON answer, before streaming anything', function () {
+        $response = callHost(['calls' => []]);
+
+        $response->assertStatus(400);
+        expect($response->json('error'))->toContain('non-empty');
+    });
 });

@@ -30,7 +30,11 @@ class RscActionManifestCommand extends Command
 
     public function handle(): int
     {
-        $json = json_encode(ActionManifest::discover(), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
+        // As an object even when empty: json_encode writes an empty array as
+        // [], and the build reads a map of { jsName: "Class.method" }. A
+        // fresh install with no actions yet wrote [] and the first `dev`
+        // refused to start.
+        $json = json_encode((object) ActionManifest::discover(), JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT);
 
         if ($this->option('print')) {
             $this->line($json);

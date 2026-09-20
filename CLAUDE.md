@@ -24,7 +24,7 @@ HTTP, so PHP no longer locates, launches or supervises a runtime.
 
 - PHP follows Laravel conventions with Pint formatting
 - Client components use `"use client"`, server actions `"use server"`
-- Route middleware is declared in a colocated `route.ts`, in Laravel's own vocabulary
+- Route middleware is declared in a colocated `middleware.ts`, in Laravel's own vocabulary
 - Always run `vendor/bin/pint --dirty --format agent` after modifying PHP files
 
 ## Testing
@@ -40,10 +40,12 @@ from here, because nothing here renders.
 
 - Package source: `/Users/ramonmalcolm/Herd/lara-bun`
 - Integration app: `/Users/ramonmalcolm/Herd/larabun-docs` — local test bed only, never pushed. Both read `RSC_HOST_CALL_SECRET`.
-  Serve it through Herd. `php artisan serve` is `php -S`, one worker, and cannot host this: the proxying worker holds
-  the only one, the page's host calls reach a server with nobody to answer them, and they time out after 30s into a 200
-  whose data is missing. `RendererProxy` refuses that shape up front rather than letting it hang. The way around without
-  Herd is to open the renderer directly on :5173 and let Laravel answer host calls only.
+  Serve it through Herd. `php artisan serve` is `php -S`, one worker by default, and cannot host this as-is: the
+  proxying worker holds the only one, the page's host calls reach a server with nobody to answer them, and they time
+  out after 30s into a 200 whose data is missing. `RendererProxy` refuses that shape up front rather than letting it
+  hang, and stands down when the server has workers: `PHP_CLI_SERVER_WORKERS=4` in `.env` **and** `serve --no-reload`
+  (Laravel's rule — without the flag it warns and starts one worker anyway). The way around without either is to open
+  the renderer directly and let Laravel answer host calls only.
 - After package changes: `composer update rsc-kit/laravel` in consuming apps
 - After TS changes: rebuild with Vite, then restart the renderer
 
@@ -58,14 +60,32 @@ deliberate. Discovery is reflection over the app's own classes — `class_exists
 through Composer's autoloader, `getMethods(IS_PUBLIC)` returning what a class
 inherits from parents and traits — none of which a JS reimplementation could do
 except by regex, which would silently miss every inherited action. So PHP
-discovers and hands the map over as `RSC_HOST_ACTIONS`; `writeHostBindings()`
-renders the `"use server"` stubs, `rsc-env.d.ts` and `rsc-types.d.ts` into
-`sourceDir`, because the app imports them by relative path and only the build
-knows that path.
+discovers and writes the map to `rsc-host-actions.json` (`rsc:action-manifest`,
+run by the `dev` and `build` scripts before Vite); the engine reads it and
+renders the `"use server"` stubs and their declarations, because only the
+build knows where the app imports them from and which global it installs.
+`make:rsc-action` writes the map too, loading the class by path first so a
+classmap-authoritative autoloader does not skip what was written a moment
+ago; the engine's dev server watches the file and restarts, so the stub is
+importable when the command returns. Discovery recurses under `app/Rsc`:
+`make:rsc-action Billing/Invoices` nests the class, and a top-level glob
+never found it.
 
-Rewritten every run, all three: a stale stub calls a global that has since been
-renamed and nothing fails until the browser. That is also why the global's name
-travels as `RSC_HOST_GLOBAL` rather than being written down twice.
+The map is an object even when empty — `json_encode` writes an empty PHP array
+as `[]`, and the engine reads a map. The global's name (`rpc`) is the engine's:
+`rscKit({ hostGlobal })` renames it, and nothing here needs to know.
+
+### The React Tree Wins The Urls It Has
+
+`RendererProxy` is a fallback, so a url Laravel routes never reaches it - and a
+fresh application routes `/` to its welcome page. The package therefore also
+registers every page and `route.ts` from the table the build writes
+(`bootstrap/rsc/vite/routes.json`, `config('rsc.routes_manifest')`) as explicit
+routes to the proxy, in an `app->booted` callback. After `booted`, not at boot:
+Laravel keeps one route per method and uri and the last registered wins, and
+`routes/web.php` loads in the app's own booted callback, registered earlier.
+Registered at boot, the page lost `/` to the welcome route; this is the order
+that makes the documented rule true.
 
 ### A Refusal Must Never Look Like Silence
 
@@ -85,6 +105,15 @@ itself to the destination and hand back whatever it found as the result.
 
 `hash_equals('', '')` is TRUE, which is why an unconfigured secret is checked
 before the comparison rather than trusted to it.
+
+A body with `calls` is a batch — several calls the renderer issued in one tick
+of a render — streamed as NDJSON, one line per call the moment it finishes,
+each with its `index`, the status it would have had alone and its own
+`revalidate`, so the renderer resolves a fast read while a slow one is still
+running. Every call is answered: a refusal in the third is that call's answer,
+not a reason to leave the fourth out. Headers leave before the first call runs,
+so a cookie queued by a batched read has nothing to ride on; reads do not set
+cookies, and an action is never batched.
 
 ### CSRF Is Deliberately Not on the Endpoint
 

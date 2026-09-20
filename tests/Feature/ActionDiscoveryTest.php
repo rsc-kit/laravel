@@ -2,8 +2,8 @@
 
 /**
  * Action discovery reads the app's config, so it belongs with the suite that
- * boots the framework. The rendering half — where the host global's name is
- * written — is covered in tests/Unit/ActionManifestTest.php.
+ * boots the framework. The rendering half - the "use server" stubs and their
+ * declarations - is the engine's, from the map this writes.
  */
 
 use Illuminate\Support\Facades\Config;
@@ -42,4 +42,15 @@ test('a missing actions directory discovers nothing', function () {
     Config::set('rsc.actions_dir', '/nonexistent/app/Rsc/Actions');
 
     expect(ActionManifest::discover())->toBe([]);
+});
+
+test('the written manifest is an object even with nothing in it', function () {
+    // json_encode writes an empty PHP array as [], and the build reads a
+    // map. A fresh install with no actions yet wrote [] and the first `dev`
+    // refused to start over it.
+    Config::set('rsc.actions_dir', '/nonexistent/app/Rsc/Actions');
+
+    $this->artisan('rsc:action-manifest', ['--print' => true])
+        ->expectsOutput('{}')
+        ->assertSuccessful();
 });

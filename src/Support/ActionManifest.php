@@ -2,6 +2,9 @@
 
 namespace RscKit\Support;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -27,15 +30,9 @@ class ActionManifest
             return [];
         }
 
-        $files = glob($directory.'/*.php');
-
-        if ($files === false) {
-            return [];
-        }
-
         $actions = [];
 
-        foreach ($files as $file) {
+        foreach (self::phpFilesUnder($directory) as $file) {
             $className = self::resolveClassName($file);
 
             if ($className === null || ! class_exists($className)) {
@@ -74,55 +71,34 @@ class ActionManifest
     }
 
     /**
-     * The "use server" module exposing each action as a callable JS function.
+     * Every PHP file under a directory, subdirectories included, in a stable
+     * order.
      *
-     * `$hostGlobal` is the name the Vite plugin installs, passed in rather than
-     * hardcoded so renaming it cannot leave this file calling a global that no
-     * longer exists.
+     * Recursive because `make:rsc-action Billing/Invoices` nests the class
+     * under Billing/, and a glob of the top level alone never found it: the
+     * command said "created", the manifest said nothing, and the stub was
+     * simply not there to import.
      *
-     * @param  array<string, string>  $actions
+     * @return list<string>
      */
-    public static function render(array $actions, string $hostGlobal): string
+    public static function phpFilesUnder(string $directory): array
     {
-        $lines = [
-            '"use server";',
-            '// @generated — do not edit. Auto-discovered from the configured actions_dir.',
-            '',
-        ];
-
-        foreach ($actions as $jsName => $phpCallable) {
-            $lines[] = "export async function {$jsName}(...args: unknown[]) {";
-            $lines[] = "  return await (globalThis as any).{$hostGlobal}(\"{$phpCallable}\", ...args);";
-            $lines[] = '}';
-            $lines[] = '';
+        if (! is_dir($directory)) {
+            return [];
         }
 
-        return implode("\n", $lines);
-    }
+        $files = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
 
-    /**
-     * Ambient declaration for the host global, written beside the actions.
-     *
-     * The global is installed at runtime by the worker, so nothing in the app's
-     * source declares it and a typecheck cannot see it. That is how a renamed
-     * global survived a clean build and only failed in the browser: with this
-     * on disk, `tsc --noEmit` catches the stale name instead.
-     */
-    public static function renderTypes(string $hostGlobal): string
-    {
-        return <<<TS
-        // @generated — do not edit.
-        //
-        // {$hostGlobal}() is installed on globalThis by the RSC worker, so it has no
-        // import to resolve. This declares it for the typechecker; run
-        // `tsc --noEmit` to catch calls to a host global that no longer exists.
-        //
-        // Deliberately not a module — no import/export — so the declaration is
-        // global to the project without every file having to reference it.
+        foreach ($iterator as $file) {
+            if ($file->isFile() && $file->getExtension() === 'php') {
+                $files[] = $file->getPathname();
+            }
+        }
 
-        declare function {$hostGlobal}<T = unknown>(name: string, ...args: unknown[]): Promise<T>;
+        sort($files);
 
-        TS;
+        return $files;
     }
 
     /**
