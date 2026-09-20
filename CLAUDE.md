@@ -60,14 +60,14 @@ deliberate. Discovery is reflection over the app's own classes — `class_exists
 through Composer's autoloader, `getMethods(IS_PUBLIC)` returning what a class
 inherits from parents and traits — none of which a JS reimplementation could do
 except by regex, which would silently miss every inherited action. So PHP
-discovers and hands the map over as `RSC_HOST_ACTIONS`; `writeHostBindings()`
-renders the `"use server"` stubs, `rsc-env.d.ts` and `rsc-types.d.ts` into
-`sourceDir`, because the app imports them by relative path and only the build
-knows that path.
+discovers and writes the map to `rsc-host-actions.json` (`rsc:action-manifest`,
+run by the `dev` and `build` scripts before Vite); the engine reads it and
+renders the `"use server"` stubs and their declarations, because only the
+build knows where the app imports them from and which global it installs.
 
-Rewritten every run, all three: a stale stub calls a global that has since been
-renamed and nothing fails until the browser. That is also why the global's name
-travels as `RSC_HOST_GLOBAL` rather than being written down twice.
+The map is an object even when empty — `json_encode` writes an empty PHP array
+as `[]`, and the engine reads a map. The global's name (`rpc`) is the engine's:
+`rscKit({ hostGlobal })` renames it, and nothing here needs to know.
 
 ### A Refusal Must Never Look Like Silence
 

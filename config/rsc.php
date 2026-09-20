@@ -52,12 +52,4 @@ return [
      */
     'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
-
-    /*
-     * Name of the global your server components call to reach PHP.
-     *
-     * The Vite plugin and the generated server actions both read it from here,
-     * so it is written down once. Changing it changes what app code calls.
-     */
-    'host_global' => env('RSC_HOST_GLOBAL', 'rpc'),
 ];

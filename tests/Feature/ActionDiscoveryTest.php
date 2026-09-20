@@ -2,8 +2,8 @@
 
 /**
  * Action discovery reads the app's config, so it belongs with the suite that
- * boots the framework. The rendering half — where the host global's name is
- * written — is covered in tests/Unit/ActionManifestTest.php.
+ * boots the framework. The rendering half - the "use server" stubs and their
+ * declarations - is the engine's, from the map this writes.
  */
 
 use Illuminate\Support\Facades\Config;
