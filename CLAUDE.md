@@ -69,6 +69,18 @@ The map is an object even when empty — `json_encode` writes an empty PHP array
 as `[]`, and the engine reads a map. The global's name (`rpc`) is the engine's:
 `rscKit({ hostGlobal })` renames it, and nothing here needs to know.
 
+### The React Tree Wins The Urls It Has
+
+`RendererProxy` is a fallback, so a url Laravel routes never reaches it - and a
+fresh application routes `/` to its welcome page. The package therefore also
+registers every page and `route.ts` from the table the build writes
+(`bootstrap/rsc/vite/routes.json`, `config('rsc.routes_manifest')`) as explicit
+routes to the proxy, in an `app->booted` callback. After `booted`, not at boot:
+Laravel keeps one route per method and uri and the last registered wins, and
+`routes/web.php` loads in the app's own booted callback, registered earlier.
+Registered at boot, the page lost `/` to the welcome route; this is the order
+that makes the documented rule true.
+
 ### A Refusal Must Never Look Like Silence
 
 Two places decide whether a page renders, and both fail closed on purpose.

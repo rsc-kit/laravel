@@ -14,6 +14,7 @@ use RscKit\Console\RscActionManifestCommand;
 use RscKit\Http\HostCallController;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Http\RendererProxy;
+use RscKit\Support\RendererRoutes;
 
 /**
  * Laravel as the backend of an rsc-kit application.
@@ -92,6 +93,11 @@ class RscKitServiceProvider extends ServiceProvider
         $this->registerHostCallEndpoint();
         $this->registerRendererFallback();
 
+        // After every provider, routes/web.php included. Laravel keeps one
+        // route per method and uri and the last one registered is it, so a
+        // page registered at boot lost `/` to the welcome route loaded after.
+        $this->app->booted(fn () => $this->registerRendererPages());
+
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__.'/../config/rsc.php' => config_path('rsc.php'),
@@ -135,6 +141,46 @@ class RscKitServiceProvider extends ServiceProvider
                 ShareErrorsFromSession::class,
                 SubstituteBindings::class,
             ]);
+    }
+
+    /**
+     * Every url the React tree has a page or a route.ts for, ahead of the app's.
+     *
+     * The fallback below only sees what nothing else routed, and a fresh
+     * application routes `/` to its welcome page - so after install the page
+     * at resources/js/app/page.tsx was unreachable, and the welcome page
+     * stood where the docs promised the React tree. The rule the docs state
+     * is per url: if the React tree has it, React renders it; otherwise
+     * Laravel does. Registered once the application has booted, after
+     * routes/web.php: Laravel keeps one route per method and uri, the last
+     * registered, so this is what makes the React page the one that answers
+     * where the app also declared the url.
+     *
+     * Read from the table the build writes on every `vite` and `vite build`,
+     * so a page added to the tree is routed on the next request with nothing
+     * to run. Before the first `vite` there is no table, and only the fallback.
+     */
+    private function registerRendererPages(): void
+    {
+        $path = (string) config('rsc.routes_manifest');
+
+        if ($path === '' || ! is_file($path)) {
+            return;
+        }
+
+        $manifest = json_decode((string) file_get_contents($path), true);
+
+        if (! is_array($manifest)) {
+            return;
+        }
+
+        foreach (RendererRoutes::patterns($manifest) as [$pattern, $catchAll, $methods]) {
+            $route = Route::addRoute($methods, $pattern, RendererProxy::class)->middleware('web');
+
+            foreach ($catchAll as $name) {
+                $route->where($name, '.*');
+            }
+        }
     }
 
     /**
