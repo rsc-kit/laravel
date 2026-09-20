@@ -2,6 +2,9 @@
 
 namespace RscKit\Support;
 
+use FilesystemIterator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionMethod;
 
@@ -27,15 +30,9 @@ class ActionManifest
             return [];
         }
 
-        $files = glob($directory.'/*.php');
-
-        if ($files === false) {
-            return [];
-        }
-
         $actions = [];
 
-        foreach ($files as $file) {
+        foreach (self::phpFilesUnder($directory) as $file) {
             $className = self::resolveClassName($file);
 
             if ($className === null || ! class_exists($className)) {
@@ -71,6 +68,37 @@ class ActionManifest
         }
 
         return $actions;
+    }
+
+    /**
+     * Every PHP file under a directory, subdirectories included, in a stable
+     * order.
+     *
+     * Recursive because `make:rsc-action Billing/Invoices` nests the class
+     * under Billing/, and a glob of the top level alone never found it: the
+     * command said "created", the manifest said nothing, and the stub was
+     * simply not there to import.
+     *
+     * @return list<string>
+     */
+    public static function phpFilesUnder(string $directory): array
+    {
+        if (! is_dir($directory)) {
+            return [];
+        }
+
+        $files = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS));
+
+        foreach ($iterator as $file) {
+            if ($file->isFile() && $file->getExtension() === 'php') {
+                $files[] = $file->getPathname();
+            }
+        }
+
+        sort($files);
+
+        return $files;
     }
 
     /**

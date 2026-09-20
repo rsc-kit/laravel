@@ -65,11 +65,8 @@ class RscKitServiceProvider extends ServiceProvider
         $this->app->singleton(CallableRegistry::class, function ($app) {
             $registry = new CallableRegistry($app);
 
-            foreach ([app_path('Rsc'), app_path('Rsc/Actions')] as $directory) {
-                if (is_dir($directory)) {
-                    $registry->discoverFrom($directory);
-                }
-            }
+            // Recursive: app/Rsc/Actions and anything nested under either.
+            $registry->discoverFrom(app_path('Rsc'));
 
             // The reserved name the renderer asks route middleware on.
             // Registered rather than discovered, because it answers the

@@ -128,3 +128,30 @@ test('instances are cached between executions', function () {
     expect($registry->execute('MultiMethodCallable.add', [2, 3]))->toBe(5);
     expect($registry->execute('MultiMethodCallable.multiply', [2, 3]))->toBe(6);
 });
+
+test('discoverFrom finds a class nested under the directory', function () {
+    $dir = sys_get_temp_dir().'/rsc-registry-'.uniqid();
+    mkdir($dir.'/Billing', 0755, true);
+
+    file_put_contents($dir.'/Billing/NestedInvoices.php', <<<'CLASS'
+<?php
+namespace RscTestNested\Billing;
+class NestedInvoices
+{
+    public function send(string $id): string { return "sent {$id}"; }
+}
+CLASS);
+
+    // make:rsc-action Billing/Invoices writes exactly this shape, and the
+    // registry answered "callable not found" for it while the file sat there.
+    require $dir.'/Billing/NestedInvoices.php';
+
+    $registry = new CallableRegistry(app());
+    $registry->discoverFrom($dir);
+
+    expect($registry->execute('NestedInvoices.send', ['7']))->toBe('sent 7');
+
+    unlink($dir.'/Billing/NestedInvoices.php');
+    rmdir($dir.'/Billing');
+    rmdir($dir);
+});

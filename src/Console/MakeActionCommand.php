@@ -59,11 +59,25 @@ class MakeActionCommand extends Command
 
         if ($rpc) {
             $this->line('  Reach it from a server component: '.$this->rpcExamples($class));
-        } else {
-            $this->line('  '.$this->stubExamples($class));
-            $this->line('  The dev and build scripts write the map before Vite; a dev server already running');
-            $this->line('  needs a restart to see the new export.');
+
+            return self::SUCCESS;
         }
+
+        $this->line('  '.$this->stubExamples($class));
+
+        // The map is what the build reads and the "use server" stub is
+        // generated from, so a class that is not in it does not exist to the
+        // app. Written here rather than left to the dev script's next run: a
+        // dev server watches the file and starts again when it changes, so
+        // the stub is importable the moment this command returns.
+        //
+        // Loaded by path first. In an application Composer's autoloader finds
+        // the class by name - unless the autoloader is classmap-authoritative,
+        // as an optimised production dump is, in which case a class written a
+        // moment ago is not in the map and discovery would skip it silently.
+        require_once $path;
+
+        $this->call('rsc:action-manifest');
 
         return self::SUCCESS;
     }
