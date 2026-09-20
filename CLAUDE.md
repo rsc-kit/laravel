@@ -64,6 +64,12 @@ discovers and writes the map to `rsc-host-actions.json` (`rsc:action-manifest`,
 run by the `dev` and `build` scripts before Vite); the engine reads it and
 renders the `"use server"` stubs and their declarations, because only the
 build knows where the app imports them from and which global it installs.
+`make:rsc-action` writes the map too, loading the class by path first so a
+classmap-authoritative autoloader does not skip what was written a moment
+ago; the engine's dev server watches the file and restarts, so the stub is
+importable when the command returns. Discovery recurses under `app/Rsc`:
+`make:rsc-action Billing/Invoices` nests the class, and a top-level glob
+never found it.
 
 The map is an object even when empty — `json_encode` writes an empty PHP array
 as `[]`, and the engine reads a map. The global's name (`rpc`) is the engine's:
