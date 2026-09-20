@@ -101,9 +101,13 @@ itself to the destination and hand back whatever it found as the result.
 before the comparison rather than trusted to it.
 
 A body with `calls` is a batch — several calls the renderer issued in one tick
-of a render — answered as `replies`, in order, each with the status it would
-have had alone and its own `revalidate`. Every call is answered: a refusal in
-the third is that call's answer, not a reason to leave the fourth out.
+of a render — streamed as NDJSON, one line per call the moment it finishes,
+each with its `index`, the status it would have had alone and its own
+`revalidate`, so the renderer resolves a fast read while a slow one is still
+running. Every call is answered: a refusal in the third is that call's answer,
+not a reason to leave the fourth out. Headers leave before the first call runs,
+so a cookie queued by a batched read has nothing to ride on; reads do not set
+cookies, and an action is never batched.
 
 ### CSRF Is Deliberately Not on the Endpoint
 
