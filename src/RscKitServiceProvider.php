@@ -41,7 +41,7 @@ class RscKitServiceProvider extends ServiceProvider
      * changelog — a renderer a major behind does not fail at boot, it fails at
      * whichever request first needs the part that changed.
      */
-    public const ENGINE_CONSTRAINT = '^0.18';
+    public const ENGINE_CONSTRAINT = '^0.19';
 
     /**
      * What the renderer is allowed to be handed.
