@@ -43,3 +43,14 @@ test('a missing actions directory discovers nothing', function () {
 
     expect(ActionManifest::discover())->toBe([]);
 });
+
+test('the written manifest is an object even with nothing in it', function () {
+    // json_encode writes an empty PHP array as [], and the build reads a
+    // map. A fresh install with no actions yet wrote [] and the first `dev`
+    // refused to start over it.
+    Config::set('rsc.actions_dir', '/nonexistent/app/Rsc/Actions');
+
+    $this->artisan('rsc:action-manifest', ['--print' => true])
+        ->expectsOutput('{}')
+        ->assertSuccessful();
+});
