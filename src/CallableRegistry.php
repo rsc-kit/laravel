@@ -7,8 +7,6 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Http\Response;
-use Illuminate\Pipeline\Pipeline;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
@@ -67,7 +65,10 @@ class CallableRegistry
             $shortName = $reflection->getShortName();
 
             foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-                if ($method->isStatic() || $method->isConstructor()) {
+                // Magic methods are PHP's, not the app's: __call would take any name
+                // and any arguments from a browser, __toString and __destruct
+                // are not actions. __invoke is the one that is.
+                if ($method->isStatic() || $method->isConstructor() || (str_starts_with($method->getName(), '__') && $method->getName() !== '__invoke')) {
                     continue;
                 }
 
@@ -164,19 +165,33 @@ class CallableRegistry
         $refClass = new ReflectionClass($class);
         $middlewareAttribute = Middleware::class;
 
+        // The class and every parent. PHP's getAttributes() reads one class
+        // only, so #[Authenticated] on an abstract AdminAction guarded nothing
+        // that extended it - and the methods it guarded are inherited, which
+        // is how they were discovered in the first place.
+        $lineage = [];
+
+        for ($c = $refClass; $c !== false; $c = $c->getParentClass()) {
+            $lineage[] = $c;
+        }
+
+        $fromLineage = fn (string $attribute): array => array_merge(
+            ...array_map(fn (ReflectionClass $c): array => $c->getAttributes($attribute), $lineage),
+        );
+
         $authenticated = array_map(
             fn (\ReflectionAttribute $a): Authenticated => $a->newInstance(),
-            $refClass->getAttributes(Authenticated::class),
+            $fromLineage(Authenticated::class),
         );
 
         $can = array_map(
             fn (\ReflectionAttribute $a): Can => $a->newInstance(),
-            $refClass->getAttributes(Can::class),
+            $fromLineage(Can::class),
         );
 
         $middleware = array_map(
             fn (\ReflectionAttribute $a): string => $a->newInstance()->middleware,
-            $refClass->getAttributes($middlewareAttribute),
+            $fromLineage($middlewareAttribute),
         );
 
         if ($method !== '__invoke' || $refClass->hasMethod($method)) {
@@ -217,10 +232,7 @@ class CallableRegistry
         $router = $this->container->make(Router::class);
         $resolved = $router->resolveMiddleware([$middleware]);
 
-        (new Pipeline($this->container))
-            ->send($request)
-            ->through($resolved)
-            ->then(fn () => new Response('', 200));
+        RouteMiddleware::through($this->container, $request, $resolved);
     }
 
     public function hasCallables(): bool
