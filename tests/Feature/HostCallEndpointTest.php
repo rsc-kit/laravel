@@ -2,11 +2,15 @@
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Validation\ValidationException;
 use RscKit\CallableRegistry;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Revalidation;
 use RscKit\RscRedirectException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Answering a host call over HTTP.
@@ -70,6 +74,7 @@ describe('dispatching', function () {
     it('names an unknown function and lists what exists', function () {
         // The caller cannot say which function is missing — it does not know
         // what this host registered — so this side has to.
+        config()->set('app.debug', true);
         $dispatcher = dispatcherWith(['Orders.recent' => fn () => null]);
 
         $answer = $dispatcher->dispatch(['function' => 'Orders.recnt', 'args' => []]);
@@ -77,6 +82,20 @@ describe('dispatching', function () {
         expect($answer['status'])->toBe(404);
         expect($answer['reply']['error'])->toContain('Orders.recnt');
         expect($answer['reply']['error'])->toContain('Orders.recent');
+    });
+
+    it('keeps the list to itself in production', function () {
+        // The list is the application's whole callable surface, and whoever
+        // guessed a name wrong may be a stranger.
+        config()->set('app.debug', false);
+        $dispatcher = dispatcherWith(['Orders.recent' => fn () => null, 'Admin.purge' => fn () => null]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Orders.recnt', 'args' => []]);
+
+        expect($answer['status'])->toBe(404);
+        expect($answer['reply']['error'])->toContain('Orders.recnt');
+        expect($answer['reply']['error'])->not->toContain('Orders.recent');
+        expect($answer['reply']['error'])->not->toContain('Admin.purge');
     });
 
     it('rejects a body with no function name', function () {
@@ -94,6 +113,8 @@ describe('dispatching', function () {
 
 describe('what a failure means', function () {
     it('reports a thrown error as a failure, with its message', function () {
+        config()->set('app.debug', true);
+
         $dispatcher = dispatcherWith([
             'Orders.recent' => fn () => throw new RuntimeException('orders table is missing'),
         ]);
@@ -103,6 +124,67 @@ describe('what a failure means', function () {
         expect($answer['status'])->toBe(500);
         expect($answer['reply']['error'])->toContain('orders table is missing');
         expect($answer['reply'])->not->toHaveKey('validationErrors');
+    });
+
+    it('keeps the message to itself in production, and reports the failure', function () {
+        // The endpoint answers a failure itself, so Laravel's handler never
+        // saw one and nothing reached the log. And the message - a query and
+        // its bindings, a path on the server - went to the renderer, which
+        // puts it where a visitor can read it.
+        Exceptions::fake();
+        config()->set('app.debug', false);
+
+        $dispatcher = dispatcherWith([
+            'Orders.recent' => fn () => throw new RuntimeException('SQLSTATE[42S02]: orders table is missing'),
+        ]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Orders.recent', 'args' => []]);
+
+        expect($answer['status'])->toBe(500);
+        expect($answer['reply']['error'])->toBe('Server Error');
+        Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'orders table is missing'));
+    });
+
+    it('reports a failure with debug on too', function () {
+        Exceptions::fake();
+        config()->set('app.debug', true);
+
+        dispatcherWith(['Orders.recent' => fn () => throw new RuntimeException('boom')])
+            ->dispatch(['function' => 'Orders.recent', 'args' => []]);
+
+        Exceptions::assertReported(RuntimeException::class);
+    });
+
+    it('does not report a refusal, which is an answer rather than a failure', function () {
+        Exceptions::fake();
+
+        $dispatcher = dispatcherWith([
+            'a' => fn () => throw ValidationException::withMessages(['name' => ['Required.']]),
+            'b' => fn () => throw new AuthenticationException,
+            'c' => fn () => throw new AuthorizationException,
+            'd' => fn () => throw new RscRedirectException('/login'),
+            'e' => fn () => abort(429),
+        ]);
+
+        foreach (['a', 'b', 'c', 'd', 'e'] as $name) {
+            $dispatcher->dispatch(['function' => $name, 'args' => []]);
+        }
+
+        Exceptions::assertNothingReported();
+    });
+
+    it('reports an abort that means the server failed', function () {
+        // Handed to report() like any failure, and Laravel's own policy then
+        // decides: it ignores HttpExceptions unless the application asks it
+        // not to, which is the application's call to make, not this one's.
+        app(ExceptionHandler::class)->stopIgnoring(HttpException::class);
+        Exceptions::fake();
+
+        $answer = dispatcherWith(['a' => fn () => abort(503, 'Down for maintenance.')])
+            ->dispatch(['function' => 'a', 'args' => []]);
+
+        expect($answer['status'])->toBe(503);
+        Exceptions::assertReported(HttpException::class);
     });
 
     it('answers a refusal with its fields, not as a failure', function () {
@@ -160,6 +242,18 @@ describe('what a failure means', function () {
         expect($answer['status'])->toBeLessThan(300);
         expect($answer['reply']['redirect'])->toBe('/login');
     });
+
+    it('carries the redirect\'s status, which the engine would otherwise make a 307', function () {
+        // A 307 replays a POST at the destination. A middleware that
+        // redirected with a 302 or a 303 meant the browser to arrive with a GET.
+        $dispatcher = dispatcherWith([
+            'Session.start' => fn () => throw new RscRedirectException('/login', 303),
+        ]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Session.start', 'args' => []]);
+
+        expect($answer['reply']['redirectStatus'])->toBe(303);
+    });
 });
 
 describe('revalidation', function () {
@@ -186,6 +280,27 @@ describe('revalidation', function () {
         $answer = $dispatcher->dispatch(['function' => 'Orders.recent', 'args' => []]);
 
         expect($answer['reply'])->not->toHaveKey('revalidate');
+    });
+
+    it('does not carry the marks of a call that threw into the next', function () {
+        // Taken only on success, a mark made before the throw stayed behind,
+        // and the next call in the batch answered with it as its own.
+        $dispatcher = dispatcherWith([
+            'Orders.create' => function () {
+                app(Revalidation::class)->mark('orders');
+
+                throw new RuntimeException('then failed');
+            },
+            'Orders.recent' => fn () => [],
+        ]);
+
+        $answer = $dispatcher->dispatch(['calls' => [
+            ['function' => 'Orders.create', 'args' => []],
+            ['function' => 'Orders.recent', 'args' => []],
+        ]]);
+
+        expect($answer['reply']['replies'][0]['status'])->toBe(500);
+        expect($answer['reply']['replies'][1])->not->toHaveKey('revalidate');
     });
 
     it('does not carry one call\'s marks into the next', function () {
@@ -261,6 +376,79 @@ describe('a batch', function () {
         expect($dispatcher->dispatch(['calls' => 'Orders.recent'])['status'])->toBe(400);
         // A call inside that is not an object is that call's 400, not the batch's.
         expect($dispatcher->dispatch(['calls' => ['x']])['reply']['replies'][0]['status'])->toBe(400);
+    });
+
+    it('refuses more calls than the engine ever sends in one', function () {
+        // Without a ceiling one request holds a worker for as many calls as
+        // it cares to list. The engine's own limit is 50.
+        $dispatcher = dispatcherWith(['Orders.recent' => fn () => []]);
+        $call = ['function' => 'Orders.recent', 'args' => []];
+
+        expect($dispatcher->dispatch(['calls' => array_fill(0, 50, $call)])['status'])->toBe(200);
+        expect($dispatcher->dispatch(['calls' => array_fill(0, 51, $call)])['status'])->toBe(413);
+        expect($dispatcher->batchRefusal(['calls' => array_fill(0, 51, $call)])['status'])->toBe(413);
+    });
+
+    it('answers a result it cannot encode as that call\'s failure, and still answers the rest', function () {
+        // Encoded after the headers had gone, it threw, the stream ended, and
+        // every call after it went unanswered.
+        Exceptions::fake();
+
+        $dispatcher = dispatcherWith([
+            'Stats.ratio' => fn () => INF,
+            'Orders.recent' => fn () => ['ok'],
+        ]);
+
+        $lines = array_map(
+            fn (string $line) => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            iterator_to_array($dispatcher->batch([
+                ['function' => 'Stats.ratio', 'args' => []],
+                ['function' => 'Orders.recent', 'args' => []],
+            ])),
+        );
+
+        expect($lines)->toHaveCount(2);
+        expect($lines[0])->toMatchArray(['index' => 0, 'status' => 500]);
+        expect($lines[0])->not->toHaveKey('result');
+        expect($lines[1])->toBe(['index' => 1, 'status' => 200, 'result' => ['ok']]);
+        Exceptions::assertReported(JsonException::class);
+    });
+
+    it('encodes a result as a controller returning it would have', function () {
+        // A value that is only Arrayable went out as its public properties -
+        // on both paths, since neither looked past the reply around it.
+        $dispatcher = dispatcherWith(['Orders.summary' => fn () => new OnlyArrayable]);
+
+        $single = json_decode($dispatcher->respond(['function' => 'Orders.summary', 'args' => []])['json'], true);
+        $line = json_decode(iterator_to_array($dispatcher->batch([['function' => 'Orders.summary', 'args' => []]]))[0], true);
+
+        expect($single['result'])->toBe(['total' => 3]);
+        expect($line['result'])->toBe(['total' => 3]);
+    });
+});
+
+class OnlyArrayable implements Arrayable
+{
+    public string $internal = 'not for the wire';
+
+    public function toArray(): array
+    {
+        return ['total' => 3];
+    }
+}
+
+describe('a single answer', function () {
+    it('answers a result it cannot encode as a 500, not an exception', function () {
+        // JsonResponse threw on it, after the call had already run, and
+        // Laravel's handler answered with a page rather than this contract.
+        Exceptions::fake();
+        config()->set('app.debug', false);
+
+        $answer = dispatcherWith(['Stats.ratio' => fn () => NAN])
+            ->respond(['function' => 'Stats.ratio', 'args' => []]);
+
+        expect($answer['status'])->toBe(500);
+        expect(json_decode($answer['json'], true))->toBe(['error' => 'Server Error']);
     });
 });
 

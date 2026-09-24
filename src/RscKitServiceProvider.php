@@ -12,6 +12,8 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 use RscKit\Console\InstallCommand;
 use RscKit\Console\MakeActionCommand;
 use RscKit\Console\RscActionManifestCommand;
+use RscKit\Console\RscCacheCommand;
+use RscKit\Console\RscClearCommand;
 use RscKit\Http\HostCallController;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Http\RendererProxy;
@@ -66,7 +68,15 @@ class RscKitServiceProvider extends ServiceProvider
             $registry = new CallableRegistry($app);
 
             // Recursive: app/Rsc/Actions and anything nested under either.
-            $registry->discoverFrom(app_path('Rsc'));
+            // From the map `rsc:cache` wrote when there is one - production,
+            // after `optimize` - and by walking the directory when not.
+            $cached = self::callablesCachePath();
+
+            if (is_file($cached)) {
+                $registry->registerDiscovered(require $cached);
+            } else {
+                $registry->discoverFrom(app_path('Rsc'));
+            }
 
             // The reserved name the renderer asks route middleware on.
             // Registered rather than discovered, because it answers the
@@ -101,8 +111,25 @@ class RscKitServiceProvider extends ServiceProvider
                 __DIR__.'/../config/rsc.php' => config_path('rsc.php'),
             ], 'rsc-config');
 
-            $this->commands([InstallCommand::class, MakeActionCommand::class, RscActionManifestCommand::class]);
+            $this->commands([
+                InstallCommand::class,
+                MakeActionCommand::class,
+                RscActionManifestCommand::class,
+                RscCacheCommand::class,
+                RscClearCommand::class,
+            ]);
+
+            // With route:cache and the rest, so a deploy that already runs
+            // `optimize` gets the cached map without a step of its own, and
+            // `optimize:clear` takes it away again.
+            $this->optimizes(optimize: 'rsc:cache', clear: 'rsc:clear', key: 'rsc');
         }
+    }
+
+    /** Where `rsc:cache` writes the discovered callables. */
+    public static function callablesCachePath(): string
+    {
+        return app()->bootstrapPath('cache/rsc-callables.php');
     }
 
     /**

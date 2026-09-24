@@ -62,6 +62,14 @@ return [
      */
     'routes_manifest' => env('RSC_ROUTES_MANIFEST', base_path('bootstrap/rsc/vite/routes.json')),
 
+    /*
+     * Where the server actions live - the classes the build writes a
+     * "use server" stub for, and `rsc:action-manifest` maps. The functions a
+     * server component reaches through rpc() are found under app/Rsc as a
+     * whole, this directory included.
+     */
+    'actions_dir' => env('RSC_ACTIONS_DIR', app_path('Rsc/Actions')),
+
     'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
 ];

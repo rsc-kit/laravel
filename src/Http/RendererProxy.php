@@ -5,7 +5,6 @@ namespace RscKit\Http;
 use Illuminate\Http\Request;
 use RscKit\ProxyWouldDeadlockException;
 use RscKit\RendererNotRunningException;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Hands a request Laravel does not answer to the renderer.
@@ -59,7 +58,21 @@ class RendererProxy
      */
     public const PROXIED_HEADER = 'X-Rsc-Proxied-By-Backend';
 
-    public function __invoke(Request $request): StreamedResponse
+    /**
+     * Headers that say who the visitor is and how they arrived.
+     *
+     * Anyone can send these. Laravel believes them only from a proxy it was
+     * told to trust, and has already resolved the request with that in mind;
+     * forwarded as they came, a visitor's own X-Forwarded-For sat ahead of the
+     * proxy's and the renderer saw whatever address they chose to claim. So
+     * the incoming ones are dropped, and the proxy says what Laravel resolved.
+     */
+    private const FORWARDING = [
+        'forwarded', 'x-real-ip', 'x-forwarded-for', 'x-forwarded-host',
+        'x-forwarded-proto', 'x-forwarded-port', 'x-forwarded-prefix',
+    ];
+
+    public function __invoke(Request $request): RendererResponse
     {
         // Already been to the renderer, which did not own it either. Answering
         // it here is Laravel's job and a 404 is the honest answer — forwarding
@@ -107,9 +120,7 @@ class RendererProxy
 
         $handle = curl_init($target);
 
-        curl_setopt_array($handle, [
-            CURLOPT_CUSTOMREQUEST => $request->getMethod(),
-            CURLOPT_HTTPHEADER => $this->forwardedHeaders($request),
+        curl_setopt_array($handle, $this->requestOptions($request) + [
             CURLOPT_RETURNTRANSFER => false,
             // A redirect is the renderer's answer and belongs to the browser.
             // Following it would return the destination's body under the
@@ -152,10 +163,6 @@ class RendererProxy
             },
         ]);
 
-        if ($request->getMethod() !== 'GET' && $request->getMethod() !== 'HEAD') {
-            curl_setopt($handle, CURLOPT_POSTFIELDS, $request->getContent());
-        }
-
         // curl rather than fopen, and this is why: PHP's http stream wrapper
         // buffers. Measured against a page with three Suspense boundaries, its
         // reads arrived at 0.04s and then nothing until 4.02s — the shell went
@@ -195,7 +202,12 @@ class RendererProxy
         // like a framework that never streamed.
         $headers['x-accel-buffering'] = ['no'];
 
-        return new StreamedResponse(function () use ($multi, $handle, &$pending, &$running) {
+        // Kept apart from the rest: see RendererResponse for why the
+        // renderer's cookies must not become Laravel's.
+        $cookies = $headers['set-cookie'] ?? [];
+        unset($headers['set-cookie']);
+
+        return new RendererResponse(function () use ($multi, $handle, &$pending, &$running) {
             // Every buffer between here and the socket, closed. PHP's own
             // output buffering is the first: Laravel and the SAPI may each have
             // started one, and echo into a buffer goes nowhere until it fills.
@@ -227,7 +239,35 @@ class RendererProxy
 
             curl_multi_remove_handle($multi, $handle);
             curl_multi_close($multi);
-        }, $status, $headers);
+        }, $status, $headers, $cookies);
+    }
+
+    /**
+     * What is asked of the renderer: the method, the headers, the body.
+     *
+     * @return array<int, mixed>
+     */
+    private function requestOptions(Request $request): array
+    {
+        $method = $request->getMethod();
+
+        $options = [
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $this->forwardedHeaders($request),
+        ];
+
+        // Naming the method is not enough for a HEAD. The answer still says
+        // how long its body would have been, and curl, told only the verb,
+        // waits for a body that is never coming - every HEAD through the
+        // proxy held a worker for the whole renderer timeout.
+        // NOBODY is what tells curl the answer ends with its headers.
+        if ($method === 'HEAD') {
+            $options[CURLOPT_NOBODY] = true;
+        } elseif ($method !== 'GET') {
+            $options[CURLOPT_POSTFIELDS] = $request->getContent();
+        }
+
+        return $options;
     }
 
     /**
@@ -240,7 +280,9 @@ class RendererProxy
         $headers = [];
 
         foreach ($request->headers->all() as $name => $values) {
-            if (in_array(strtolower($name), self::HOP_BY_HOP, true)) {
+            $lower = strtolower($name);
+
+            if (in_array($lower, self::HOP_BY_HOP, true) || in_array($lower, self::FORWARDING, true)) {
                 continue;
             }
 
@@ -251,10 +293,18 @@ class RendererProxy
 
         $headers[] = self::PROXIED_HEADER.': 1';
 
-        // The visitor's own address and the name they typed, not this hop's.
+        // The visitor's own address and the name they typed, not this hop's -
+        // as Laravel resolved them, which is through TrustProxies when a
+        // proxy it trusts is in front and from the connection when not.
         $headers[] = 'X-Forwarded-For: '.$request->ip();
+        $headers[] = 'X-Real-IP: '.$request->ip();
         $headers[] = 'X-Forwarded-Host: '.$request->getHost();
         $headers[] = 'X-Forwarded-Proto: '.$request->getScheme();
+        $headers[] = 'X-Forwarded-Port: '.$request->getPort();
+
+        // No prefix: the path forwarded is the whole one the visitor asked
+        // for, base path included, and naming it twice would mount the
+        // renderer's routes under it a second time.
 
         return $headers;
     }

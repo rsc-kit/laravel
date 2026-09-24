@@ -33,7 +33,7 @@ class ActionManifest
         $actions = [];
 
         foreach (self::phpFilesUnder($directory) as $file) {
-            $className = self::resolveClassName($file);
+            $className = self::classIn($file);
 
             if ($className === null || ! class_exists($className)) {
                 continue;
@@ -105,19 +105,65 @@ class ActionManifest
     }
 
     /**
-     * Resolve a fully-qualified class name from a PHP file path.
+     * The fully-qualified name of the class a PHP file declares.
+     *
+     * Read with PHP's own tokenizer rather than a pattern. A pattern for
+     * `class Name` matched the first place those words met, and a docblock
+     * saying "this class handles refunds" is such a place: discovery went
+     * looking for Refunds\handles, found nothing, and the class the file
+     * declared was skipped without a word. A token is only a T_CLASS where
+     * PHP would read one, so comments and strings cannot stand in for it -
+     * and one after `::` (Foo::class) or `new` (an anonymous class) is not a
+     * declaration.
+     *
+     * Shared with the registry, so the actions the build is told about and
+     * the functions the endpoint answers are found the same way.
      */
-    private static function resolveClassName(string $filePath): ?string
+    public static function classIn(string $filePath): ?string
     {
-        $contents = file_get_contents($filePath);
+        $contents = @file_get_contents($filePath);
 
         if ($contents === false) {
             return null;
         }
 
-        if (preg_match('/namespace\s+([^;]+);/', $contents, $nsMatch)
-            && preg_match('/class\s+(\w+)/', $contents, $classMatch)) {
-            return $nsMatch[1].'\\'.$classMatch[1];
+        $tokens = array_values(array_filter(
+            token_get_all($contents),
+            fn ($token) => ! is_array($token) || ! in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true),
+        ));
+
+        $namespace = '';
+
+        foreach ($tokens as $i => $token) {
+            if (! is_array($token)) {
+                continue;
+            }
+
+            if ($token[0] === T_NAMESPACE) {
+                $next = $tokens[$i + 1] ?? null;
+
+                if (is_array($next) && in_array($next[0], [T_STRING, T_NAME_QUALIFIED], true)) {
+                    $namespace = $next[1];
+                }
+
+                continue;
+            }
+
+            if ($token[0] !== T_CLASS) {
+                continue;
+            }
+
+            $previous = $tokens[$i - 1] ?? null;
+
+            if (is_array($previous) && in_array($previous[0], [T_DOUBLE_COLON, T_NEW], true)) {
+                continue;
+            }
+
+            $name = $tokens[$i + 1] ?? null;
+
+            if (is_array($name) && $name[0] === T_STRING) {
+                return $namespace === '' ? $name[1] : $namespace.'\\'.$name[1];
+            }
         }
 
         return null;

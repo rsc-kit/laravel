@@ -7,6 +7,7 @@
  */
 
 use Illuminate\Support\Facades\Config;
+use RscKit\CallableRegistry;
 use RscKit\Support\ActionManifest;
 
 test('discovery maps class methods to camelCase JS names', function () {
@@ -63,6 +64,48 @@ CLASS);
 
     unlink($dir.'/Magic.php');
     rmdir($dir);
+});
+
+test('a docblock that says "class" does not hide the class', function () {
+    // A pattern for `class Name` matched the first place the words met - here
+    // "class handles" - went looking for RscTestDocblock\handles, and skipped
+    // the class the file actually declared without a word.
+    $dir = sys_get_temp_dir().'/rsc-actions-'.uniqid();
+    mkdir($dir, 0755, true);
+
+    file_put_contents($dir.'/Refunds.php', <<<'CLASS'
+<?php
+namespace RscTestDocblock;
+
+use Illuminate\Routing\Attributes\Controllers\Middleware;
+
+/**
+ * This class handles refunds, and a class like it would too.
+ */
+#[Middleware(\stdClass::class)]
+class Refunds
+{
+    public function issue(): string { return 'issued'; }
+}
+CLASS);
+
+    require $dir.'/Refunds.php';
+    Config::set('rsc.actions_dir', $dir);
+
+    expect(ActionManifest::discover())->toBe(['refundsIssue' => 'Refunds.issue']);
+    expect(CallableRegistry::discover($dir))->toBe(['Refunds.issue' => ['RscTestDocblock\Refunds', 'issue']]);
+
+    unlink($dir.'/Refunds.php');
+    rmdir($dir);
+});
+
+test('the actions directory is in the published config, with its default', function () {
+    // Read by discovery and missing from config/rsc.php, so an application
+    // could not see it to change it.
+    $config = require dirname(__DIR__, 2).'/config/rsc.php';
+
+    expect($config)->toHaveKey('actions_dir');
+    expect($config['actions_dir'])->toBe(app_path('Rsc/Actions'));
 });
 
 test('a missing actions directory discovers nothing', function () {

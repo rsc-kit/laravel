@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use RscKit\CallableRegistry;
@@ -147,4 +148,120 @@ describe('a batch over the wire', function () {
         $response->assertStatus(400);
         expect($response->json('error'))->toContain('non-empty');
     });
+
+    it('refuses an oversized batch before running any of it', function () {
+        registerHostFunction('Orders.recent', function () {
+            throw new RuntimeException('must not run');
+        });
+
+        callHost(['calls' => array_fill(0, 51, ['function' => 'Orders.recent', 'args' => []])])
+            ->assertStatus(413);
+    });
+
+    it('keeps what the calls wrote to the session', function () {
+        // StartSession saves when the response leaves the middleware, and a
+        // streamed response leaves before its body runs - so before any call
+        // in the batch had run. Everything they wrote was dropped.
+        config()->set('session.driver', 'array');
+
+        registerHostFunction('Cart.touch', function () {
+            session()->put('cart.touched', true);
+
+            return null;
+        });
+
+        callHost(['calls' => [['function' => 'Cart.touch', 'args' => []]]])->streamedContent();
+
+        // Read back from the handler - what the next request would load -
+        // rather than from the store still in memory, which has it either way.
+        $session = app('session')->driver();
+        $stored = unserialize($session->getHandler()->read($session->getId()));
+
+        expect($stored['cart']['touched'] ?? null)->toBeTrue();
+    });
+
+    it('gives each call a request of its own, holding only its own input', function () {
+        // The request the endpoint received is the host call's, so a form
+        // request built from it saw "function", "args" and "calls" beside
+        // its fields - and with every call's args merged into that one
+        // request, the second call validated with what the first had sent.
+        app(CallableRegistry::class)->register('Orders.store', StoresOrder::class);
+        app()->forgetInstance(HostCallDispatcher::class);
+
+        $response = callHost(['calls' => [
+            ['function' => 'Orders.store', 'args' => [['name' => 'first', 'note' => 'from the first call']]],
+            ['function' => 'Orders.store', 'args' => [[]]],
+        ]]);
+
+        $lines = array_map(
+            fn (string $line) => json_decode($line, true, 512, JSON_THROW_ON_ERROR),
+            explode("\n", trim($response->streamedContent())),
+        );
+
+        expect($lines[0])->toMatchArray(['status' => 200, 'result' => ['name' => 'first', 'note' => 'from the first call']]);
+        expect($lines[1]['status'])->toBe(422);
+        expect($lines[1]['validationErrors'])->toHaveKey('name');
+    });
 });
+
+it('answers a result it cannot encode as a failure in the contract\'s own shape', function () {
+    // JsonResponse threw on it once the call had run, and Laravel's handler
+    // answered with its own error page rather than {"error": ...}.
+    config()->set('app.debug', false);
+    registerHostFunction('Stats.ratio', fn () => INF);
+
+    $response = callHost(['function' => 'Stats.ratio', 'args' => []]);
+
+    $response->assertStatus(500);
+    expect($response->json())->toBe(['error' => 'Server Error']);
+});
+
+it('closes every buffer between a batch line and the socket', function () {
+    // Flushing the top buffer only hands its contents to the one below, and
+    // under FPM php.ini's output_buffering is usually that one: a fast read
+    // waited there until 4KB of answers had piled up behind it.
+    ob_start();
+    $floor = ob_get_level();
+
+    ob_start();
+    ob_start();
+    echo 'a line';
+
+    HostCallController::drainOutputBuffers('fpm-fcgi', $floor);
+
+    expect(ob_get_level())->toBe($floor);
+    expect(ob_get_clean())->toBe('a line');
+});
+
+it('leaves the buffers alone under the CLI, where they are somebody else\'s', function () {
+    // Octane's Swoole and RoadRunner workers capture a response by
+    // buffering it; closing their buffer sends the body nowhere.
+    ob_start();
+    $level = ob_get_level();
+
+    HostCallController::drainOutputBuffers('cli');
+
+    expect(ob_get_level())->toBe($level);
+    ob_end_clean();
+});
+
+class StoreOrderRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    public function rules(): array
+    {
+        return ['name' => ['required', 'string']];
+    }
+}
+
+class StoresOrder
+{
+    public function __invoke(StoreOrderRequest $request): array
+    {
+        return $request->all();
+    }
+}
