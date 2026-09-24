@@ -7,6 +7,8 @@ use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Response;
 use Illuminate\Pipeline\Pipeline;
 use Illuminate\Routing\Router;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Runs a route's middleware, named by a route.ts in the app tree.
@@ -50,10 +52,7 @@ class RouteMiddleware
         $resolved = $router->resolveMiddleware($names);
 
         try {
-            (new Pipeline($this->container))
-                ->send($request)
-                ->through($resolved)
-                ->then(fn () => new Response('', 200));
+            self::through($this->container, $request, $resolved);
         } catch (AuthenticationException $e) {
             // Laravel's own behaviour, which its exception handler supplies on
             // an ordinary route and nothing supplies here: send them to log in
@@ -69,6 +68,51 @@ class RouteMiddleware
         }
 
         return true;
+    }
+
+    /**
+     * Run middleware and return only if every one of them passed the request on.
+     *
+     * A middleware refuses in one of two ways. It can throw, as `auth` and
+     * `can` do. Or it can answer: `verified`, `guest` and `password.confirm`
+     * return a redirect, and a hand-written guard may return a 403. A
+     * pipeline hands either answer back as its result, and reading only the
+     * exceptions let every one of those through - an unverified visitor saw
+     * the verified-only page.
+     *
+     * So allowing means the pipeline reached its end. An answer is a refusal:
+     * a redirect goes to where it points, and anything else fails with the
+     * answer's own status, or 403 when that status would read as success.
+     *
+     * @param  array<int, mixed>  $middleware  resolved
+     *
+     * @throws RscRedirectException
+     * @throws HttpException
+     */
+    public static function through(Container $container, mixed $request, array $middleware): void
+    {
+        $passed = false;
+
+        $answer = (new Pipeline($container))
+            ->send($request)
+            ->through($middleware)
+            ->then(function () use (&$passed) {
+                $passed = true;
+
+                return new Response('', 200);
+            });
+
+        if ($passed) {
+            return;
+        }
+
+        if ($answer instanceof SymfonyResponse && $answer->isRedirect() && $answer->headers->has('Location')) {
+            throw new RscRedirectException((string) $answer->headers->get('Location'), $answer->getStatusCode());
+        }
+
+        $status = $answer instanceof SymfonyResponse ? $answer->getStatusCode() : 403;
+
+        throw new HttpException($status >= 400 ? $status : 403, 'Refused by middleware.');
     }
 
     /**

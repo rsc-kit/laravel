@@ -49,7 +49,10 @@ class ActionManifest
             $baseName = preg_replace('/Callable$/', '', $shortName);
 
             foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-                if ($method->isStatic() || $method->isConstructor()) {
+                // Magic methods are PHP's, not the app's: __call would take any name
+                // and any arguments from a browser, __toString and __destruct
+                // are not actions. __invoke is the one that is.
+                if ($method->isStatic() || $method->isConstructor() || (str_starts_with($method->getName(), '__') && $method->getName() !== '__invoke')) {
                     continue;
                 }
 

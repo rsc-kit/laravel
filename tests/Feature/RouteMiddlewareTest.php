@@ -2,6 +2,9 @@
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
+use Illuminate\Auth\MustVerifyEmail;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use RscKit\CallableRegistry;
@@ -9,6 +12,7 @@ use RscKit\Http\HostCallDispatcher;
 use RscKit\Revalidation;
 use RscKit\RouteMiddleware;
 use RscKit\RscRedirectException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Middleware for a route the engine owns.
@@ -83,6 +87,47 @@ it('never returns true when a middleware stopped the request', function () {
     });
 
     expect(fn () => runner()->run(['aborts']))->toThrow(AuthorizationException::class);
+});
+
+it('refuses when a middleware answers instead of passing the request on', function () {
+    // verified, guest and password.confirm do not throw - they return a
+    // redirect. A pipeline hands that back as its result, and reading only
+    // exceptions allowed every one of them.
+    app('router')->aliasMiddleware('answers-403', fn () => response('no', 403));
+
+    expect(fn () => runner()->run(['answers-403']))
+        ->toThrow(fn (HttpException $e) => expect($e->getStatusCode())->toBe(403));
+});
+
+it('sends the visitor where an answering middleware redirects them', function () {
+    app('router')->aliasMiddleware('answers-redirect', fn () => redirect('/email/verify'));
+
+    expect(fn () => runner()->run(['answers-redirect']))
+        ->toThrow(fn (RscRedirectException $e) => expect($e->getLocation())->toEndWith('/email/verify'));
+});
+
+it('refuses an unverified user through Laravel\'s own verified middleware', function () {
+    Route::get('/email/verify', fn () => 'verify')->name('verification.notice');
+
+    $user = new class extends User implements Illuminate\Contracts\Auth\MustVerifyEmail
+    {
+        use MustVerifyEmail;
+
+        protected $attributes = ['email_verified_at' => null];
+    };
+
+    app('request')->setUserResolver(fn () => $user);
+
+    expect(fn () => runner()->run([EnsureEmailIsVerified::class]))
+        ->toThrow(RscRedirectException::class);
+});
+
+it('refuses a middleware that answers with a success of its own', function () {
+    // It answered in the route's place; the page is not what it allowed.
+    app('router')->aliasMiddleware('answers-200', fn () => response('cached'));
+
+    expect(fn () => runner()->run(['answers-200']))
+        ->toThrow(fn (HttpException $e) => expect($e->getStatusCode())->toBe(403));
 });
 
 it('sends an unauthenticated visitor to the login route', function () {

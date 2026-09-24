@@ -49,6 +49,17 @@ class MethodGatedActions
     }
 }
 
+#[Authenticated]
+abstract class GuardedBase
+{
+    public function wipe(): string
+    {
+        return 'wiped';
+    }
+}
+
+class InheritsTheGuard extends GuardedBase {}
+
 class NoAttributeActions
 {
     public function ping(): string
@@ -141,4 +152,13 @@ test('closures skip authorization entirely', function () {
     $result = $registry->execute('myClosure', []);
 
     expect($result)->toBe('closure-result');
+});
+
+it('guards a subclass with the attributes on its parent', function () {
+    // getAttributes() reads one class. The guard on an abstract base must
+    // reach the methods its children inherit - those are the ones exposed.
+    $registry = freshRegistry();
+    $registry->register('InheritsTheGuard.wipe', [InheritsTheGuard::class, 'wipe']);
+
+    expect(fn () => $registry->execute('InheritsTheGuard.wipe', []))->toThrow(AuthenticationException::class);
 });

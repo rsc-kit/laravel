@@ -38,6 +38,33 @@ CLASS);
     rmdir($dir);
 });
 
+test('magic methods are not actions', function () {
+    // __call would take any name and any arguments from a browser; __toString
+    // and __destruct are PHP's hooks, not the app's. __invoke stays an action.
+    $dir = sys_get_temp_dir().'/rsc-actions-'.uniqid();
+    mkdir($dir, 0755, true);
+
+    file_put_contents($dir.'/Magic.php', <<<'CLASS'
+<?php
+namespace RscTestActions;
+class Magic
+{
+    public function save(): void {}
+    public function __call($name, $args) {}
+    public function __toString(): string { return ''; }
+    public function __destruct() {}
+}
+CLASS);
+
+    require $dir.'/Magic.php';
+    Config::set('rsc.actions_dir', $dir);
+
+    expect(ActionManifest::discover())->toBe(['magicSave' => 'Magic.save']);
+
+    unlink($dir.'/Magic.php');
+    rmdir($dir);
+});
+
 test('a missing actions directory discovers nothing', function () {
     Config::set('rsc.actions_dir', '/nonexistent/app/Rsc/Actions');
 
