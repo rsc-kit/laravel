@@ -8,6 +8,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
+use Illuminate\Routing\Redirector;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -18,13 +19,14 @@ use RscKit\Attributes\Authenticated;
 use RscKit\Attributes\Can;
 use RscKit\Support\ActionManifest;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\InputBag;
 
 class CallableRegistry
 {
     /** @var array<string, array{class-string, string}|class-string|Closure> */
     private array $callables = [];
 
-    /** @var array<string, array{authenticated: Authenticated[], can: Can[], middleware: string[]}> */
+    /** @var array<string, array{authenticated: Authenticated[], can: Can[], middleware: list<Closure|string>}> */
     private array $attributeCache = [];
 
     public function __construct(private Container $container) {}
@@ -49,8 +51,39 @@ class CallableRegistry
      */
     public function discoverFrom(string $directory): void
     {
+        $this->registerDiscovered(self::discover($directory));
+    }
+
+    /**
+     * Register what discovery found - freshly, or from the cached map.
+     *
+     * Explicit registrations still take precedence.
+     *
+     * @param  array<string, array{class-string, string}|class-string>  $discovered
+     */
+    public function registerDiscovered(array $discovered): void
+    {
+        foreach ($discovered as $name => $callable) {
+            if (! isset($this->callables[$name])) {
+                $this->callables[$name] = $callable;
+            }
+        }
+    }
+
+    /**
+     * What a directory offers, by name, without registering any of it.
+     *
+     * The walk, a read and a parse of every file, and a reflection of every
+     * class - which is why `rsc:cache` writes the answer down for production.
+     *
+     * @return array<string, array{class-string, string}|class-string>
+     */
+    public static function discover(string $directory): array
+    {
+        $discovered = [];
+
         foreach (ActionManifest::phpFilesUnder($directory) as $file) {
-            $className = $this->resolveClassName($file);
+            $className = ActionManifest::classIn($file);
 
             if ($className === null || ! class_exists($className)) {
                 continue;
@@ -76,13 +109,15 @@ class CallableRegistry
                     ? $shortName
                     : "{$shortName}.{$method->getName()}";
 
-                if (! isset($this->callables[$name])) {
-                    $this->callables[$name] = $method->getName() === '__invoke'
+                if (! isset($discovered[$name])) {
+                    $discovered[$name] = $method->getName() === '__invoke'
                         ? $className
                         : [$className, $method->getName()];
                 }
             }
         }
+
+        return $discovered;
     }
 
     /**
@@ -158,7 +193,7 @@ class CallableRegistry
     /**
      * Reflect attributes from both class and method, merging them together.
      *
-     * @return array{authenticated: Authenticated[], can: Can[], middleware: string[]}
+     * @return array{authenticated: Authenticated[], can: Can[], middleware: list<Closure|string>}
      */
     private function resolveAttributes(string $class, string $method): array
     {
@@ -189,8 +224,11 @@ class CallableRegistry
             $fromLineage(Can::class),
         );
 
+        // Closure|string, as Laravel's attribute declares it: an inline
+        // middleware is as much a guard as a named one, and typing this as
+        // string turned one into a TypeError on every call it guarded.
         $middleware = array_map(
-            fn (\ReflectionAttribute $a): string => $a->newInstance()->middleware,
+            fn (\ReflectionAttribute $a): Closure|string => $a->newInstance()->middleware,
             $fromLineage($middlewareAttribute),
         );
 
@@ -208,29 +246,40 @@ class CallableRegistry
             ));
 
             $middleware = array_merge($middleware, array_map(
-                fn (\ReflectionAttribute $a): string => $a->newInstance()->middleware,
+                fn (\ReflectionAttribute $a): Closure|string => $a->newInstance()->middleware,
                 $refMethod->getAttributes($middlewareAttribute),
             ));
         }
 
+        // Named middleware once each - a class and its parent both saying
+        // 'auth' is one guard. A closure is its own; array_unique would have
+        // to turn it into a string to compare it, and cannot.
+        $named = array_unique(array_filter($middleware, 'is_string'));
+
         return [
             'authenticated' => $authenticated,
             'can' => $can,
-            'middleware' => array_values(array_unique($middleware)),
+            'middleware' => array_values(array_filter(
+                $middleware,
+                fn (Closure|string $m, int $i) => ! is_string($m) || isset($named[$i]),
+                ARRAY_FILTER_USE_BOTH,
+            )),
         ];
     }
 
     /**
      * Resolve and run a single middleware through Laravel's Pipeline.
      */
-    private function runMiddleware(string $middleware): void
+    private function runMiddleware(Closure|string $middleware): void
     {
         $request = $this->container->make('request');
 
         // Resolve middleware alias (e.g. 'auth' → Authenticate::class)
-        // through the router so Pipeline gets the actual class, not the helper function.
-        $router = $this->container->make(Router::class);
-        $resolved = $router->resolveMiddleware([$middleware]);
+        // through the router so Pipeline gets the actual class, not the helper
+        // function. A closure is already the thing to run.
+        $resolved = $middleware instanceof Closure
+            ? [$middleware]
+            : $this->container->make(Router::class)->resolveMiddleware([$middleware]);
 
         RouteMiddleware::through($this->container, $request, $resolved);
     }
@@ -249,9 +298,8 @@ class CallableRegistry
     }
 
     /**
-     * If the method's first parameter type-hints a FormRequest, merge the
-     * incoming args into the current request and resolve the FormRequest
-     * through the container (which triggers validation automatically).
+     * If the method's first parameter type-hints a FormRequest, build one
+     * from this call's args and validate it, as Laravel would on a route.
      *
      * @param  array<int|string, mixed>  $args
      * @return array<int, mixed>
@@ -278,15 +326,24 @@ class CallableRegistry
             return $args;
         }
 
-        // Merge the callable args into the current HTTP request so the
-        // FormRequest sees them as input data for validation.
-        $httpRequest = $this->container->make('request');
         $data = isset($args[0]) && is_array($args[0]) ? $args[0] : $args;
-        $httpRequest->merge($data);
 
-        // Resolve the FormRequest through the container — this runs
-        // authorization (authorize()) and validation (rules()) automatically.
-        $formRequest = $this->container->make($typeName);
+        // A request of its own, carrying this call's arguments and nothing
+        // else. The request the endpoint received is the host call's: its
+        // body is the envelope, so all() answered with "function", "args"
+        // and "calls" beside the form's fields, and merging into it meant a
+        // batch's second call validated with whatever the first one sent.
+        // The session, the user and the route come across with the copy.
+        $callRequest = $this->container->make('request')->duplicate([], $data);
+        $callRequest->setJson(new InputBag($data));
+
+        // Built and filled here rather than made by the container, which
+        // would fill it from the shared request and validate that before
+        // this one could be handed over. The rest is what Laravel does to a
+        // form request it resolves: authorize(), then rules().
+        $formRequest = FormRequest::createFrom($callRequest, $this->container->build($typeName));
+        $formRequest->setContainer($this->container)->setRedirector($this->container->make(Redirector::class));
+        $formRequest->validateResolved();
 
         return [$formRequest];
     }
@@ -305,24 +362,5 @@ class CallableRegistry
     private function resolveInstance(string $class): object
     {
         return $this->container->make($class);
-    }
-
-    /**
-     * Resolve a fully-qualified class name from a PHP file path using PSR-4 conventions.
-     */
-    private function resolveClassName(string $filePath): ?string
-    {
-        $contents = file_get_contents($filePath);
-
-        if ($contents === false) {
-            return null;
-        }
-
-        if (preg_match('/namespace\s+([^;]+);/', $contents, $nsMatch)
-            && preg_match('/class\s+(\w+)/', $contents, $classMatch)) {
-            return $nsMatch[1].'\\'.$classMatch[1];
-        }
-
-        return null;
     }
 }

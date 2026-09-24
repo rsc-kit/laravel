@@ -48,15 +48,29 @@ class HostCallController
 
             $calls = $body['calls'];
 
-            return new StreamedResponse(function () use ($calls) {
-                foreach ($this->dispatcher->batch($calls) as $line) {
-                    echo $line, "\n";
+            return new StreamedResponse(function () use ($calls, $request) {
+                self::drainOutputBuffers();
 
-                    if (ob_get_level() > 0) {
-                        ob_flush();
+                try {
+                    foreach ($this->dispatcher->batch($calls) as $line) {
+                        echo $line, "\n";
+
+                        if (ob_get_level() > 0) {
+                            ob_flush();
+                        }
+
+                        flush();
                     }
-
-                    flush();
+                } finally {
+                    // StartSession saved the session when this response left
+                    // the middleware - before this body ran, so before any of
+                    // these calls did. What they wrote to it was never stored.
+                    // Saved once, at the end, not after every call: each save
+                    // ages the flash data, and a second one in one request
+                    // discards what the first kept for the next.
+                    if ($request->hasSession()) {
+                        $request->session()->save();
+                    }
                 }
             }, 200, [
                 'Content-Type' => 'application/x-ndjson',
@@ -66,8 +80,33 @@ class HostCallController
             ]);
         }
 
-        ['status' => $status, 'reply' => $reply] = $this->dispatcher->dispatch($body);
+        ['status' => $status, 'json' => $json] = $this->dispatcher->respond($body);
 
-        return new JsonResponse($reply, $status);
+        return new JsonResponse($json, $status, [], 0, true);
+    }
+
+    /**
+     * Close every output buffer between this response and the socket.
+     *
+     * Flushing only the top one hands its contents to the buffer below, and
+     * php.ini's output_buffering is usually one: under FPM a line flushed
+     * "the moment its call finished" waited there until 4KB had piled up, so
+     * a fast read in a batch arrived with the slow one after all. The proxy
+     * closes them all for the same reason.
+     *
+     * Not under the CLI SAPI, where there is no such buffer and whatever is
+     * open belongs to something else - Octane's Swoole and RoadRunner workers
+     * capture a response by buffering it, and a test runner captures output
+     * the same way. Closing theirs sends the body nowhere.
+     */
+    public static function drainOutputBuffers(string $sapi = PHP_SAPI, int $floor = 0): void
+    {
+        if (in_array($sapi, ['cli', 'phpdbg'], true)) {
+            return;
+        }
+
+        while (ob_get_level() > $floor) {
+            ob_end_flush();
+        }
     }
 }

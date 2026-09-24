@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Gate;
 use RscKit\Attributes\Authenticated;
 use RscKit\Attributes\Can;
 use RscKit\CallableRegistry;
+use RscTestClosureMiddleware\ClosureMiddlewareActions;
 
 #[Authenticated]
 class AuthenticatedActions
@@ -161,4 +162,33 @@ it('guards a subclass with the attributes on its parent', function () {
     $registry->register('InheritsTheGuard.wipe', [InheritsTheGuard::class, 'wipe']);
 
     expect(fn () => $registry->execute('InheritsTheGuard.wipe', []))->toThrow(AuthenticationException::class);
+});
+
+describe('a closure as #[Middleware]', function () {
+    beforeEach(function () {
+        if (PHP_VERSION_ID < 80500) {
+            $this->markTestSkipped('A closure in an attribute needs PHP 8.5.');
+        }
+
+        require_once dirname(__DIR__).'/fixtures/ClosureMiddlewareActions.php';
+
+        app('router')->aliasMiddleware('rsc-test-passes', fn ($request, Closure $next) => $next($request));
+    });
+
+    it('runs it as the guard it is', function () {
+        // Laravel's attribute is Closure|string. Read as a string, a closure
+        // was a TypeError on every call it was there to guard.
+        $registry = freshRegistry();
+        $registry->register('refused', [ClosureMiddlewareActions::class, 'refused']);
+
+        expect(fn () => $registry->execute('refused', []))
+            ->toThrow(AuthorizationException::class, 'The closure said no.');
+    });
+
+    it('lets the call through when it passes, beside named ones', function () {
+        $registry = freshRegistry();
+        $registry->register('allowed', [ClosureMiddlewareActions::class, 'allowed']);
+
+        expect($registry->execute('allowed', []))->toBe('ran');
+    });
 });

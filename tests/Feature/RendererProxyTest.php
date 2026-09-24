@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use RscKit\Http\HostCallController;
 use RscKit\Http\RendererProxy;
 use RscKit\ProxyWouldDeadlockException;
@@ -263,4 +264,146 @@ it('still lets a real route win, whatever the method', function () {
     file_put_contents(config('rsc.hot_file'), 'http://127.0.0.1:1');
 
     expect($this->post('/mine')->getContent())->toBe('mine');
+});
+
+/**
+ * A renderer that answers, for what only shows against a real answer.
+ *
+ * Started once per process on a free port and stopped when the process ends.
+ */
+function fakeRenderer(): string
+{
+    static $url = null;
+
+    if ($url !== null) {
+        return $url;
+    }
+
+    $probe = stream_socket_server('tcp://127.0.0.1:0');
+    $port = (int) substr(strrchr(stream_socket_get_name($probe, false), ':'), 1);
+    fclose($probe);
+
+    $process = proc_open(
+        [PHP_BINARY, '-S', "127.0.0.1:{$port}", dirname(__DIR__).'/fixtures/renderer.php'],
+        [['pipe', 'r'], ['file', '/dev/null', 'w'], ['file', '/dev/null', 'w']],
+        $pipes,
+    );
+
+    register_shutdown_function(fn () => proc_terminate($process));
+
+    for ($i = 0; $i < 100; $i++) {
+        if ($socket = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1)) {
+            fclose($socket);
+
+            break;
+        }
+
+        usleep(20_000);
+    }
+
+    return $url = "http://127.0.0.1:{$port}";
+}
+
+it('does not keep a HEAD waiting for a body that is not coming', function () {
+    // The renderer's answer to a HEAD says how long its body would have been.
+    // Told only the verb, curl waited for that body until the timeout.
+    $renderer = fakeRenderer();
+
+    $options = (new ReflectionMethod(RendererProxy::class, 'requestOptions'))
+        ->invoke(new RendererProxy, Request::create('http://app.test/a-page', 'HEAD'));
+
+    $handle = curl_init($renderer.'/a-page');
+    curl_setopt_array($handle, $options + [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 3]);
+
+    $started = microtime(true);
+    curl_exec($handle);
+
+    expect(curl_errno($handle))->toBe(0);
+    expect(curl_getinfo($handle, CURLINFO_RESPONSE_CODE))->toBe(200);
+    expect(microtime(true) - $started)->toBeLessThan(1.5);
+});
+
+it('hands the renderer the visitor Laravel resolved, not the one they claimed', function () {
+    // Anyone can send X-Forwarded-For. Forwarded as it came, the visitor's
+    // own claim sat ahead of the proxy's and the renderer believed it.
+    $request = Request::create('http://app.test/a-page', 'GET', server: [
+        'REMOTE_ADDR' => '10.0.0.7',
+        'HTTP_X_FORWARDED_FOR' => '6.6.6.6',
+        'HTTP_X_FORWARDED_HOST' => 'evil.test',
+        'HTTP_X_FORWARDED_PROTO' => 'https',
+        'HTTP_X_FORWARDED_PORT' => '8443',
+        'HTTP_X_FORWARDED_PREFIX' => '/evil',
+        'HTTP_FORWARDED' => 'for=6.6.6.6;host=evil.test',
+        'HTTP_X_REAL_IP' => '6.6.6.6',
+    ]);
+
+    $headers = (new ReflectionMethod(RendererProxy::class, 'forwardedHeaders'))
+        ->invoke(new RendererProxy, $request);
+
+    $named = fn (string $name) => array_values(array_map(
+        fn (string $line) => trim(explode(':', $line, 2)[1]),
+        array_filter($headers, fn (string $line) => strcasecmp(explode(':', $line, 2)[0], $name) === 0),
+    ));
+
+    expect($named('X-Forwarded-For'))->toBe(['10.0.0.7']);
+    expect($named('X-Real-IP'))->toBe(['10.0.0.7']);
+    expect($named('X-Forwarded-Host'))->toBe(['app.test']);
+    expect($named('X-Forwarded-Proto'))->toBe(['http']);
+    expect($named('X-Forwarded-Port'))->toBe(['80']);
+    expect($named('X-Forwarded-Prefix'))->toBe([]);
+    expect($named('Forwarded'))->toBe([]);
+    expect(implode("\n", $headers))->not->toContain('6.6.6.6');
+});
+
+/**
+ * Every Set-Cookie the browser would be sent, in order.
+ *
+ * Read the way the response writes them: the renderer's own lines after
+ * whatever the middleware stack left.
+ *
+ * @return list<string>
+ */
+function sentCookies(TestResponse $response): array
+{
+    $base = $response->baseResponse;
+
+    return method_exists($base, 'setCookieLines')
+        ? $base->setCookieLines()
+        : array_map('strval', $base->headers->getCookies());
+}
+
+it('lets the renderer\'s cookies reach the browser as the renderer sent them', function () {
+    // They came from a host call, which ran under EncryptCookies already.
+    // Encrypted a second time, nothing could read them; overwritten by the
+    // proxy's own session cookie, a login made during the render was
+    // replaced by the session it had just migrated away from.
+    config()->set('session.driver', 'file');
+    config()->set('session.files', sys_get_temp_dir());
+    file_put_contents(config('rsc.hot_file'), fakeRenderer());
+
+    $response = $this->get('/sets-cookies');
+
+    $response->assertOk();
+
+    $cookies = sentCookies($response);
+    $sessions = array_values(array_filter($cookies, fn (string $c) => str_starts_with($c, config('session.cookie').'=')));
+
+    expect($sessions)->toBe([
+        'laravel_session=from-the-host-call%3D%3D; expires=Thu, 01 Jan 2099 00:00:00 GMT; Max-Age=999; path=/; httponly; samesite=lax',
+    ]);
+    expect($cookies)->toContain('remember_me=abc123; Path=/; HttpOnly');
+});
+
+it('still sends the proxy\'s own cookies when the renderer set none of that name', function () {
+    // The session the proxy started - and the XSRF-TOKEN a page's actions
+    // post back with - are still the visitor's when the renderer said nothing
+    // about them.
+    config()->set('session.driver', 'file');
+    config()->set('session.files', sys_get_temp_dir());
+    file_put_contents(config('rsc.hot_file'), fakeRenderer());
+
+    $cookies = implode("\n", sentCookies($this->get('/sets-nothing')->assertOk()));
+
+    expect($cookies)->toContain(config('session.cookie').'=');
+    expect($cookies)->toContain('XSRF-TOKEN=');
 });

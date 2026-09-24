@@ -5,6 +5,7 @@ namespace RscKit\Console;
 use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+use RscKit\RscKitServiceProvider;
 
 /**
  * Write a class the renderer can call, with its guards already on it.
@@ -56,6 +57,16 @@ class MakeActionCommand extends Command
         $this->files->put($path, $this->render($namespace, $class, $rpc));
 
         $this->components->info(sprintf('%s [%s] created.', $rpc ? 'rpc class' : 'Server action', $path));
+
+        // A cached map - `optimize` was run here - would not have the class
+        // in it, and the registry reads only the map while one exists. So it
+        // is written again, with the class loaded by path first for the same
+        // reason as the manifest below.
+        if (is_file(RscKitServiceProvider::callablesCachePath())) {
+            require_once $path;
+
+            $this->call('rsc:cache');
+        }
 
         if ($rpc) {
             $this->line('  Reach it from a server component: '.$this->rpcExamples($class));
