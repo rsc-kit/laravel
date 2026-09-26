@@ -157,10 +157,10 @@ return PageRoute::make()
 - `viewData()` is for Blade only (title, meta tags) — never sent to React
 
 ### Inline Environment Variables
-- `PUBLIC_*` env vars are inlined into browser bundles at build time
+- `VITE_*` env vars are inlined into browser bundles at build time - the only client prefix; the build refuses a `PUBLIC_*` variable by name
 - Non-prefixed vars stay server-side only
-- Use `process.env.PUBLIC_STRIPE_KEY` in client components
-- TypeScript autocomplete via auto-generated `env.d.ts`
+- Use `import.meta.env.VITE_STRIPE_KEY` in client components (`process` does not exist in the browser)
+- Declare them in `ImportMetaEnv` for types
 
 ## Route Interception
 
