@@ -3,6 +3,7 @@
 namespace RscKit\Support;
 
 use BackedEnum;
+use Carbon\CarbonInterface;
 use Closure;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
@@ -161,6 +162,14 @@ class HostTypes
             return $this->enum($class);
         }
 
+        // Carbon encodes as an ISO 8601 string. It is JsonSerializable, so
+        // without this it was left open: unknown, on every timestamp a
+        // model or a data object returns. PHP's own DateTime is not this - it
+        // encodes as an object - and stays open below.
+        if (is_a($class, CarbonInterface::class, true)) {
+            return ['type' => 'string', 'format' => 'date-time'];
+        }
+
         // Its own encoding, or a runtime one: a model, a collection, a
         // resource. What it holds is not on the class.
         if (is_subclass_of($class, UnitEnum::class)
@@ -175,6 +184,13 @@ class HostTypes
         }
 
         $reflection = new ReflectionClass($class);
+
+        // PHP's own classes - DateTime, ArrayObject - encode from internals,
+        // not from public properties: there is nothing here to describe.
+        if ($reflection->isInternal()) {
+            return [];
+        }
+
         $name = $reflection->getShortName();
 
         // Two namespaces' Order are two types.
