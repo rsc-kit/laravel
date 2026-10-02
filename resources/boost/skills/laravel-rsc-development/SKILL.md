@@ -1,274 +1,110 @@
 ---
 name: laravel-rsc-development
-description: "Develops Laravel RSC applications — React Server Components, file-based routing, Forms, useForm, server actions, rpc() callables, optimistic updates, streaming, Suspense, and the build pipeline."
+description: "Builds React Server Component pages in front of a Laravel app with rsc-kit — pages and layouts under resources/js/app, rpc() calls into app/Rsc, server actions in app/Rsc/Actions, middleware.ts guards, forms, Suspense slots, and the dev and production setup."
 license: MIT
 metadata:
-  author: laravel-rsc
+  author: rsc-kit
 ---
 
-# RSC Development for Laravel RSC
+# rsc-kit for Laravel
 
 ## When to Apply
 
 Activate this skill when:
 
-- Creating or modifying RSC pages, layouts, or components
-- Working with file-based routing conventions
-- Implementing parallel routes (@folder) or route interception
-- Adding rpc() callables or server actions
-- Debugging streaming, Suspense, or hydration issues
-- Modifying the build pipeline (resources/vite.ts, worker.ts)
+- Creating or changing a page, layout or component under `resources/js/app`
+- Reading Laravel data from a page with `rpc()`
+- Writing a server action, a form, or a button that calls an action
+- Guarding a route with `middleware.ts`
+- Deciding where a Suspense boundary goes, or why the build refused a route
+- Setting up development, tests or a production deploy
 
-## File-Based Routing
+## The Model
+
+The renderer is the front door: a JavaScript process built by Vite with
+`@rsc-kit/core` and Nitro. It routes, renders, prerenders and serves the
+assets. Laravel answers what only Laravel can, on one private endpoint
+(`/__rsc/host-call`):
+
+- the data a page reads, through `rpc()`
+- the server actions a client component calls
+- whether a route may render, through `middleware.ts`
+
+Every Laravel route still works: `/login`, a Blade page, a webhook or a file
+under `/storage` is forwarded to Laravel. Per url, **if the React tree has it,
+React renders it**; otherwise Laravel does.
+
+There is no PHP-side rendering, no socket, no `route.php` and no worker for
+PHP to supervise. Do not write any of those.
+
+## Where Things Live
 
 ```
-resources/js/rsc/app/
-├── layout.tsx          ← root layout (wraps all pages)
-├── page.tsx            ← / route
-├── (group)/            ← route group (no URL segment)
-│   └── page.tsx
-├── [param]/            ← dynamic segment → {param}
-│   └── page.tsx
-├── [...param]/         ← catch-all → {param} with .*
-│   └── page.tsx
-├── @slot/              ← parallel route slot
-│   ├── page.tsx        ← default slot content
-│   └── (.)target/      ← route interception
-│       └── page.tsx
-├── loading.tsx         ← Suspense fallback (auto-wraps children)
-└── route.php           ← middleware, viewData, staticPaths, where
+resources/js/app/            the route tree
+├── layout.tsx               root layout
+├── page.tsx                 /
+├── orders/
+│   ├── page.tsx             /orders
+│   ├── orders.section.tsx   a region an action can refresh by name
+│   └── middleware.ts        Laravel middleware for /orders and below
+├── [team]/                  dynamic segment: params.team
+├── [...path]/               catch-all
+├── (marketing)/             route group, no url segment
+├── @modal/                  parallel route slot
+├── error.tsx                must be "use client"
+├── not-found.tsx            the app's 404 page
+└── loading.tsx              rarely; see below
+resources/js/server-actions.generated.ts   written by the build; never edit
+app/Rsc/                     classes rpc() calls, Class.method
+app/Rsc/Actions/             server actions
+rsc-host.json                written by PHP: actions and function names
+.rsc-kit/rsc-env.d.ts        declares rpc(), typed by those names
+bootstrap/rsc/vite/          the build's generated code and route table
 ```
 
-## Key Conventions
+## Reading Laravel Data
 
-### Server Components (default)
-```tsx
-// No directive needed — server by default
-export default async function Page({ slug }: { slug: string }) {
-  const data = await php<Post>("Posts.find", slug);
-  return <div>{data.title}</div>;
-}
-```
+`rpc()` is a global the renderer installs. Never import it. It works in
+server components during a render, and nowhere else.
 
-### Client Components
-```tsx
-"use client";
-import { useState } from "react";
-export default function Counter() {
-  const [count, setCount] = useState(0);
-  return <button onClick={() => setCount(count + 1)}>{count}</button>;
-}
-```
-
-### Server Actions
-```tsx
-"use server";
-export async function addTodo(formData: FormData) {
-  const title = formData.get("title") as string;
-  return await (globalThis as any).rpc("Todos.add", title);
-}
-```
-
-### Form Component
-```tsx
-"use client";
-import { Form } from "laravel-rsc/form";
-import { addTodo } from "./actions";
-
-type FormValues = { title: string };
-
-export default function TodoForm() {
-  return (
-    <Form<FormValues> action={addTodo}>
-      {({ pending, error }) => (
-        <>
-          <input name="title" />
-          {error('title') && <span>{error('title')}</span>}
-          <button disabled={pending}>{pending ? 'Adding...' : 'Add'}</button>
-        </>
-      )}
-    </Form>
-  );
-}
-```
-
-### useForm Hook
-```tsx
-"use client";
-import { useForm } from "laravel-rsc/form";
-import { updateProfile } from "./actions";
-
-const { data, setData, errors, error, pending, recentlySuccessful, submit } =
-  useForm<{ name: string; email: string }>({ name: '', email: '' });
-
-// Submit with optimistic update
-submit(updateProfile, () => addOptimistic(data));
-```
-
-### Optimistic Updates
-```tsx
-const [optimisticTodos, addOptimistic] = useOptimistic(todos,
-  (state, newTodo: Todo) => [...state, newTodo]
-);
-
-// Form component — optimistic prop receives form data
-<Form action={addTodo} optimistic={(data) => addOptimistic({ id: Date.now(), title: data.title })}>
-
-// useForm hook — second arg to submit() runs inside the transition
-submit(addTodo, () => addOptimistic({ id: Date.now(), title: data.title }));
-```
-
-### PHP Callables
 ```php
-// app/Rsc/Posts.php — auto-discovered
-class Posts {
-    public function latest(): array {
-        return Post::latest()->take(10)->get()->toArray();
+// app/Rsc/Orders.php — discovered by convention
+namespace App\Rsc;
+
+class Orders
+{
+    public function __construct(private OrderRepository $orders) {}
+
+    public function recent(int $limit = 5): array
+    {
+        return $this->orders->forUser(auth()->user())->latest()->take($limit)->get()->all();
     }
 }
 ```
 
-### FormRequest in Callables
-```php
-// Type-hint FormRequest for automatic validation
-use App\Http\Requests\StorePostRequest;
-
-class CreatePost {
-    public function __invoke(StorePostRequest $request): array {
-        return Post::create($request->validated())->toArray();
-    }
-}
+```tsx
+const orders = await rpc<Order[]>('Orders.recent', 5)
 ```
 
-### Passing Data via route.php
-```php
-// props() → React component props
-// viewData() → Blade view only (title, meta)
-return PageRoute::make()
-    ->props(fn () => [
-        'intended_url' => redirect()->intended(route('dashboard'))->getTargetUrl(),
-    ])
-    ->viewData(fn () => [
-        'title' => 'Login',
-    ]);
-```
-- `props()` accepts a static array or closure
-- Closure makes the page dynamic — requires `loading.tsx`
-- `viewData()` is for Blade only (title, meta tags) — never sent to React
+- The name is `Class.method`; an invokable class is reached by its class name.
+- The call runs as the visitor: their cookie is forwarded, so `auth()->user()`
+  is them. The class is resolved through the container.
+- Names are typed from `rsc-host.json`, so `rpc('Orders.recnet')` fails the
+  typecheck. Make a class with `php artisan make:rsc-action Orders --rpc --method=recent`.
+- Sibling `rpc()` calls in one render go to Laravel as one batch, answered as
+  each finishes.
+- A client component cannot call `rpc()`. It calls a server action.
 
-### Inline Environment Variables
-- `VITE_*` env vars are inlined into browser bundles at build time - the only client prefix; the build refuses a `PUBLIC_*` variable by name
-- Non-prefixed vars stay server-side only
-- Use `import.meta.env.VITE_STRIPE_KEY` in client components (`process` does not exist in the browser)
-- Declare them in `ImportMetaEnv` for types
+## Pages Paint; Slots Wait
 
-## Route Interception
-
-Convention matches Next.js:
-
-| Prefix | Intercepts |
-|--------|-----------|
-| `(.)folder` | Same level |
-| `(..)folder` | One level up |
-| `(...)folder` | From app root |
-
-Layout receives slot as prop — no special wrapper needed:
+This is the default way to write a page. The page is a **synchronous**
+component: its headings, copy and frames are the stored shell, painted at
+once. Each `rpc()` read goes in its own async child, a "slot", under its own
+`<Suspense>`, with a skeleton the shape of what it replaces:
 
 ```tsx
-export default function Layout({ children, modal }) {
-  return <div>{children}{modal}</div>;
-}
-```
+import { Suspense } from 'react'
 
-## Pipeline (PHP → Bun → Browser)
-
-### SPA Navigation
-1. Browser `fetch()` with `X-RSC: true` header
-2. PHP `PageController` → `RscResponse::toStreamedRscResponse()`
-3. PHP `RuntimeBridge::rscStream()` → socket message to Bun worker
-4. Bun worker → the generated entry's `handleRscStream()` → Flight stream
-5. PHP yields chunks → browser `createFromReadableStream()` → React renders
-
-### Initial HTML Load
-Same but uses `rscHtmlStream` → HTML SSR with Suspense streaming
-
-### Route Interception (SPA)
-1. Client `matchIntercept()` detects URL in manifest
-2. `X-RSC-Intercept: slotName` + `X-RSC-Referer: currentUrl` headers added
-3. Server resolves referer page, renders with interceptor in slot override
-4. `buildElement()` uses `{component, props}` object for the overridden slot
-
-## Socket Protocol
-
-Binary frames: 4-byte big-endian length + JSON payload.
-
-### Message Types (main socket)
-- `rsc-stream` → Flight payload streaming (SPA nav)
-- `rsc-html-stream` → HTML + Flight streaming (initial load)
-- `rsc-action` → Server action execution
-- `rsc-ppr-shell` → PPR shell capture (build time)
-
-### Callback Socket (.sock.cb)
-- Persistent pool for `rpc()` calls during rendering
-- PHP registers with `callbackId`, Bun routes responses back
-
-## Critical: Stream-Start Ordering
-
-The `stream-start` frame MUST be read eagerly from the main socket before entering the callback select loop. Before processing any callback, drain pending main socket frames with non-blocking `socket_select(timeout=0)`. This prevents slow `rpc()` callbacks from blocking response delivery.
-
-## Build System
-
-`resources/vite.ts` — the `rscRoutes()` Vite plugin (`resources/build-rsc-vite.ts` is the thin CLI that picks a config and runs Vite):
-- Discovers `page`/`layout`/`loading`/`default` route components under `app/`
-- Generates the three plugin entries (rsc / ssr / browser) carrying Laravel RSC's
-  `buildElement` composition and the worker's render contract
-- Server bundles land in `bootstrap/rsc/vite`; the browser bundle goes to
-  `public/build/rsc-vite` and is served directly, never through PHP
-- The plugin handles directive splitting, client references and CSS; React 19
-  hoists the `<title>`/`<meta>` rendered inside the tree
-### Extending the build
-
-The build is a Vite plugin the app composes. Create `vite.rsc.config.ts` at the
-project root (or point `RSC_VITE_CONFIG` anywhere):
-
-```ts
-// vite.rsc.config.ts
-import { rscRoutes } from 'laravel-rsc/vite'
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-
-export default defineConfig({
-  plugins: [rscRoutes(), react({ compiler: true })],
-})
-```
-
-`rscRoutes()` discovers the `app/` route tree, generates the three entries, and
-supplies the structural config (entries, output dirs, `base`). It includes
-`@vitejs/plugin-rsc`, so you never add `rsc()` yourself. Vite runs this config
-directly — nothing is merged on top of it. Without a config the build falls
-back to `rscRoutes()` alone, so a project works with no Vite config at all.
-
-Put `rscRoutes()` first. A JSX transform running before `rsc()` sees the module
-graph before the client/server split; the build refuses with a message naming
-the offending plugin rather than failing somewhere unrelated.
-
-`react({ compiler: true })` enables the React Compiler — install
-`@vitejs/plugin-react` and `oxc-transform-react` in the app and it runs, no
-Babel involved. The Babel route still works if you need its options:
-
-```ts
-react({ babel: { plugins: ['babel-plugin-react-compiler'] } })
-```
-
-Tailwind, aliases, and any other plugin belong in the same file.
-
-### Pages paint; slots wait
-
-Write the page as a synchronous component. Its headings, copy and frames are
-the stored shell. Each `rpc()` read goes in its own async child, a "slot",
-under its own `<Suspense>` with a skeleton the shape of what it replaces:
-
-```tsx
 export default function OrdersPage() {
   return (
     <section>
@@ -277,108 +113,252 @@ export default function OrdersPage() {
         <OrdersSlot />
       </Suspense>
     </section>
-  );
+  )
 }
 
 async function OrdersSlot() {
-  const orders = await rpc<Order[]>('Orders.recent', 5);
+  const orders = await rpc<Order[]>('Orders.recent', 5)
 
-  return <OrderList orders={orders} />;
+  return <OrderList orders={orders} />
 }
 ```
 
-A page that awaits `rpc()` in its own default export blocks before it can
-paint, and the build fails with the route named. Fix it by moving the read
-into a slot, not by adding `loading.tsx`. `loading.tsx` wraps the whole page
-in one boundary: the heading waits with the data, the slowest read holds back
-the rest, and a 404 or redirect decided under it may already have a 200 on
-the wire. Keep it for a page that is one read and nothing else. Whether a page
-exists for the visitor is a check for `middleware.ts`, which runs first.
+A fast slot is not held back by a slow one, and each slot does its own read
+and its own checks, so it can move or be refreshed on its own.
 
-### Partial prerendering (PPR)
+**Do not reach for `loading.tsx`.** It wraps the whole page in one boundary:
+the heading waits with the data, the slowest read holds back the rest, a 404
+or redirect decided under it may already have a 200 on the wire, and it sits
+below its layout, so it does not cover a layout that waits. Keep it for a page
+that is one read and nothing else.
 
-A page whose slow work sits in a child behind `<Suspense>` gets a **shell**:
-the static markup with a hole where the request data goes. `rsc:build` writes
-it to `.ppr.html`, and `ServeStaticRsc` serves it with `Cache-Control:
-public, s-maxage=…` plus an `ETag`, so any CDN caches it with no worker and no
-special runtime.
+The build renders every route. A page that awaits `rpc()` above every
+boundary has nothing to store, and the build fails naming the route. Fix it by
+moving the read into a slot.
 
-The shell already contains the client bootstrap, so the browser paints it
-immediately, boots, and fills the hole from the Flight request — which is
-`no-store` and always hits the origin. No request-specific data is ever in a
-cached shell: the build renders it with `rpc()` replaced by a probe that never
-resolves.
+## Params
 
+A page and a layout each receive `params` as a **promise**. A layout gets its
+own segments' params and those above it. A route that lists no urls is stored
+as one shell for every value, so a layout reads params under `<Suspense>`:
+
+```tsx
+export default function TeamLayout({ params, children }) {
+  return (
+    <>
+      <Suspense fallback={null}>
+        <TeamName params={params} />
+      </Suspense>
+      {children}
+    </>
+  )
+}
+
+async function TeamName({ params }) {
+  const { team } = await params
+
+  return (await rpc<Team>('Teams.find', team)).name
+}
 ```
-browser → CDN: cached shell (instant paint, Suspense fallback showing)
-browser → origin: Flight payload with real data → fills the hole
+
+## Refusing
+
+Attributes on a class or method, and the refusal reaches the page as itself:
+
+```php
+use RscKit\Attributes\Authenticated;
+use RscKit\Attributes\Can;
+use Illuminate\Routing\Attributes\Controllers\Middleware;
+
+#[Authenticated]
+#[Middleware('throttle:60,1')]
+class Orders
+{
+    #[Can('update', Order::class)]
+    public function cancel(int $id): void { /* … */ }
+}
 ```
 
-Tunable with `RSC_SHELL_TTL` and `RSC_SHELL_SWR`. Two caveats:
+| in PHP | the page gets |
+| --- | --- |
+| `AuthenticationException` | 401 |
+| `AuthorizationException` | 403 |
+| `ValidationException`, or a FormRequest that fails | `validationErrors` on the form |
+| `abort(404)` | the app's `not-found.tsx` |
+| a middleware `abort(429)` | its own status |
+| `RscRedirectException` | a redirect the browser follows |
 
-- Shells go stale on redeploy. Purge the CDN on deploy, or keep the TTL short.
-- If a CSP nonce is active the shell is served `private, no-store`, since one
-  cached copy would hand every visitor the same nonce.
+A status only reaches the response when it is decided before anything is
+sent. A 404 from a read inside a slot shows the not-found page, but the
+response may already be a 200. Decide whether a page exists in
+`middleware.ts`.
 
-### Cache invalidation
+## Route Middleware
 
-Shells are tagged `laravel-rsc-shell` via `Cache-Tag` (Cloudflare) and
-`Surrogate-Key` (Fastly/Varnish), so a deploy hook can purge every shell at
-once instead of waiting out the TTL. **Purge on deploy** — a shell references
-hashed asset URLs, and once those 404 the client never boots to fill the hole.
-Short of a purge hook, keep `RSC_SHELL_TTL` low.
+`middleware.ts` names Laravel middleware for its directory and everything
+below. It runs on every path, before anything renders, including a page the
+build stored:
 
-The client adopts the build version from the first response carrying
-`X-RSC-Version`, so a redeploy mid-session is caught on the next navigation and
-answered with a 409 plus a full reload.
+```ts
+// resources/js/app/admin/middleware.ts
+export const middleware = ['auth', 'verified', 'can:update,post']
+```
 
-## Runtime
+It fails closed: only a pipeline that reaches the end lets the page render. A
+middleware that aborts, redirects or errors refuses it. Never put an access
+check in a layout: a navigation skips layouts the browser already holds.
 
-The worker and the build both run on **Bun or Node** — `RSC_RUNTIME=bun`
-(default) or `node`, with `RSC_RUNTIME_BINARY` to point at a specific
-executable. Nothing in the render path is runtime-specific: the socket server,
-the event-loop yield and the directory walk live behind `resources/runtime.ts`,
-and everything above it is plain web APIs.
+## Server Actions
 
-Bun is the default because it starts faster and `rsc:install` can vendor a
-static binary onto hosts that have no JavaScript runtime at all.
+A class under `app/Rsc/Actions/` is a server action, exported to the app as
+`classMethod`:
 
-## Deployment
+```sh
+php artisan make:rsc-action Orders --method=cancel --auth --can=update,Order --revalidate=orders
+```
 
-`rsc:serve` is a long-running supervisor that spawns the Bun workers; PHP talks
-to them over a Unix socket. Any host that can run a persistent process
-alongside PHP works — the two only need to share a filesystem.
+```php
+namespace App\Rsc\Actions;
 
-### Laravel Cloud
+use RscKit\Attributes\Authenticated;
+use RscKit\Rsc;
 
-Runs on any plan, including Starter and Growth. No enterprise plan and no TCP
-transport are required.
+class Orders
+{
+    #[Authenticated]
+    public function cancel(CancelOrder $request): void
+    {
+        $request->order()->cancel();
 
-1. **Build commands** — install Bun before building, since Cloud's PHP image
-   has none. `rsc:install` writes a static binary to `bin/bun` inside the
-   project, so it persists into the deployed image:
+        Rsc::revalidate('orders');
+    }
+}
+```
 
-   ```bash
-   php artisan rsc:install && php artisan rsc:build
-   ```
+```tsx
+'use client'
+import { ordersCancel } from '../../server-actions.generated'
+```
 
-2. **App cluster → Background processes → Custom worker** — command
-   `php artisan rsc:serve`, 1 instance. Cloud restarts it if it exits.
+- `make:rsc-action` writes the guards the registry reads; do not hand-write
+  them from memory. It also rewrites `rsc-host.json`, and a running dev
+  server restarts, so the export is importable at once.
+- A class you write by hand is picked up when Vite next starts, because
+  `vite.config.ts` runs `php artisan rsc:host-manifest`.
+- `Rsc::revalidate('orders')` names a region that changed: an
+  `orders.section.tsx`, a slot, `'page'` or `'all'`. The re-rendered region
+  comes back with the action's answer. A name the calling page does not show
+  is skipped.
+- A redirect from an action renders the destination fresh, so a cookie or
+  membership the action changed is already reflected. No revalidate needed
+  before it.
 
-   Use the **App** cluster, not a worker cluster. Background processes there run
-   in the same pod that serves web traffic, so the Unix socket works. Worker
-   clusters are separate compute that does not serve web traffic, so PHP could
-   not reach a worker running on one.
+## Forms
 
-3. **Set `RSC_WORKERS`** — Cloud spawns your custom process once *per replica*,
-   and each Bun worker loads the RSC bundle into its own heap. `RSC_WORKERS=1`
-   is right for small instances. Left unset, the default is bounded by the
-   cgroup CPU quota and the container memory limit, but setting it explicitly is
-   clearer.
+```tsx
+'use client'
+import { Form } from '@rsc-kit/core/form'
+import { ordersCreate } from '../../server-actions.generated'
 
-Keep `RSC_TRANSPORT=unix` (the default).
+export function NewOrder() {
+  return (
+    <Form action={ordersCreate}>
+      {({ pending, error, formError }) => (
+        <>
+          <input name="title" />
+          {error('title') && <p>{error('title')}</p>}
+          {formError && <p role="alert">{formError}</p>}
+          <button disabled={pending}>Create</button>
+        </>
+      )}
+    </Form>
+  )
+}
+```
 
-**Scale to Zero** stops the App cluster on its sleep timeout, taking the Bun
-workers with it; they restart when the environment wakes. PHP retries the socket
-connection for up to 3s to cover that. A manual wake interval avoids the cold
-start entirely.
+- `error('field')` is the field's message. `formError` is a refusal that is
+  not about a field.
+- `optimistic={(data) => addOptimistic(data)}` pairs with React's
+  `useOptimistic`; a failure takes it back.
+- `resetOnSuccess` is on by default.
+- From a button rather than a form, use `useAction` from
+  `@rsc-kit/core/useAction`: `execute`, `isPending`, `onSuccess`, `onError`
+  and an `optimistic` option.
+
+## Environment
+
+- A browser-readable variable starts with `VITE_` and is read as
+  `import.meta.env.VITE_…`. There is no `process` in the browser, and the
+  build refuses a `PUBLIC_*` variable.
+- `RSC_HOST_CALL_SECRET` and `APP_URL` (or `RSC_BACKEND`) are read by both
+  Laravel and the renderer from the app's `.env`.
+
+## Commands
+
+```sh
+php artisan rsc:install          # config, secret, and the JavaScript half
+php artisan make:rsc-action ...  # an action, or --rpc for an rpc() class
+php artisan rsc:host-manifest    # rsc-host.json; Vite runs it for you
+php artisan optimize             # includes rsc:cache, the discovered callables
+npm run dev                      # Vite is the renderer
+npm run build                    # .output/
+npx rsc-kit-typegen && npx tsc --noEmit   # route types and rpc() names, then the typecheck
+```
+
+## Development
+
+Serve the app through Herd, Valet or PHP-FPM and open its own address. `npm
+run dev` writes `public/rsc-hot`, and Laravel hands every url it does not
+route to the dev server.
+
+`php artisan serve` has one worker by default and cannot do this: the
+proxying request holds it while the page's `rpc()` calls need another. Use
+`PHP_CLI_SERVER_WORKERS=4` in `.env` with `php artisan serve --no-reload`, or
+open the renderer's address directly.
+
+## Testing
+
+- PHP: Pest, against the callables and actions as ordinary classes.
+- JavaScript: `createTestApp` from `@rsc-kit/core/testing` builds the app and
+  fetches pages with no server. Laravel's side is answered in the test:
+
+```ts
+import { createTestApp, hostReply, HOST_MIDDLEWARE } from '@rsc-kit/core/testing'
+
+const app = await createTestApp({
+  host: {
+    'Orders.recent': () => [{ id: 1, number: 'A-1' }],
+    [HOST_MIDDLEWARE]: ({ headers }) =>
+      headers.get('cookie')?.includes('laravel_session') ? true : hostReply.unauthenticated(),
+  },
+  backend: (request) => new Response('the login page'),   // urls Laravel serves
+})
+```
+
+`hostReply` also has `unauthorized()`, `redirect(to)`, `refuse(status,
+message)`, `invalid(errors)` and `revalidating(result, ...regions)`.
+
+## Production
+
+```sh
+composer install --no-dev --optimize-autoloader
+npm ci && npm run build
+```
+
+- The build runs `rsc:host-manifest`, so PHP must boot on the build machine.
+- Run `.output/server/index.mjs` as a service with the app's `.env`. Put the
+  renderer in front; it forwards what it does not own to Laravel.
+- Block `/__rsc/host-call` from the internet at the web server. The secret
+  is required; without one the endpoint is not registered.
+- Add the renderer to `trustProxies`, so `url()` and redirects use the public
+  origin.
+
+## Do Not
+
+- Import `rpc`, or call it from a client component.
+- Write `route.php`, a socket, `rsc:serve`, or anything that renders in PHP.
+- Edit `server-actions.generated.ts` or `rsc-host.json` by hand.
+- Add `loading.tsx` to fix a refused route; move the read into a slot.
+- Check access in a layout; use `middleware.ts`.
+- Use the old `laravel-rsc/form` or `rscRoutes` imports; it is
+  `@rsc-kit/core/form` and `rscKit` from `@rsc-kit/core/vite`.
