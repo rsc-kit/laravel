@@ -89,8 +89,16 @@ const orders = await rpc<Order[]>('Orders.recent', 5)
 - The name is `Class.method`; an invokable class is reached by its class name.
 - The call runs as the visitor: their cookie is forwarded, so `auth()->user()`
   is them. The class is resolved through the container.
-- Names are typed from `rsc-host.json`, so `rpc('Orders.recnet')` fails the
-  typecheck. Make a class with `php artisan make:rsc-action Orders --rpc --method=recent`.
+- The call is typed from the PHP signature, through `rsc-host.json`:
+  `rpc('Orders.find', 7)` is the method's return type, and a wrong name or
+  argument fails the typecheck. Make a class with
+  `php artisan make:rsc-action Orders --rpc --method=recent`.
+- Typed: `int`, `float`, `string`, `bool` parameters (nullable, defaults
+  optional, variadic); a `FormRequest` first parameter from its `rules()`; a
+  result that is a scalar, a backed enum, or a plain class with public typed
+  properties. **Return a data object rather than an array** to type the
+  result. `array`, models and collections stay `unknown`: write
+  `rpc<Order[]>('Orders.recent')` for those.
 - Sibling `rpc()` calls in one render go to Laravel as one batch, answered as
   each finishes.
 - A client component cannot call `rpc()`. It calls a server action.

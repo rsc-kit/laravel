@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use RscKit\CallableRegistry;
 use RscKit\RouteMiddleware;
 use RscKit\Support\ActionManifest;
+use RscKit\Support\HostTypes;
 
 /**
  * Hands the build what this backend offers the app, as rsc-host.json:
@@ -38,17 +39,29 @@ class RscHostManifestCommand extends Command
         // Walked again rather than read from the registry alone: make:rsc-action
         // calls this a moment after writing a class the registry was built
         // without. The registry adds what the app registered by hand.
-        $functions = array_values(array_unique([
-            ...array_keys(CallableRegistry::discover(app_path('Rsc'))),
-            ...array_filter($registry->names(), fn (string $name) => $name !== RouteMiddleware::FUNCTION),
-        ]));
+        $callables = array_filter(
+            [...CallableRegistry::discover(app_path('Rsc')), ...$registry->all()],
+            fn (string $name) => $name !== RouteMiddleware::FUNCTION,
+            ARRAY_FILTER_USE_KEY,
+        );
+
+        $functions = array_keys($callables);
 
         sort($functions);
+
+        // What each one takes and returns, so the app's rpc() and the action
+        // stubs are typed from the PHP signatures.
+        ['types' => $types, 'defs' => $defs] = HostTypes::describe($callables);
 
         // As an object even when empty: json_encode writes an empty PHP array
         // as [], and the build reads a map of actions.
         $json = json_encode(
-            ['actions' => (object) $actions, 'functions' => $functions],
+            [
+                'actions' => (object) $actions,
+                'functions' => $functions,
+                'types' => (object) $types,
+                'defs' => (object) $defs,
+            ],
             JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
         );
 

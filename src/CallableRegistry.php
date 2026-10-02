@@ -290,6 +290,16 @@ class CallableRegistry
     }
 
     /**
+     * Every callable, by name: what the manifest describes the types of.
+     *
+     * @return array<string, array{class-string, string}|class-string|Closure>
+     */
+    public function all(): array
+    {
+        return $this->callables;
+    }
+
+    /**
      * @return array<string>
      */
     public function names(): array
