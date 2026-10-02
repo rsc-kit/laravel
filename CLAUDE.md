@@ -60,19 +60,22 @@ deliberate. Discovery is reflection over the app's own classes — `class_exists
 through Composer's autoloader, `getMethods(IS_PUBLIC)` returning what a class
 inherits from parents and traits — none of which a JS reimplementation could do
 except by regex, which would silently miss every inherited action. So PHP
-discovers and writes the map to `rsc-host-actions.json` (`rsc:action-manifest`,
-run by the `dev` and `build` scripts before Vite); the engine reads it and
-renders the `"use server"` stubs and their declarations, because only the
-build knows where the app imports them from and which global it installs.
-`make:rsc-action` writes the map too, loading the class by path first so a
+discovers and writes `rsc-host.json` (`rsc:host-manifest`, which the app's
+`rscKit({ hostManifest })` runs as dev and every build start): `actions`, the
+map the engine renders `"use server"` stubs and their declarations from, and
+`functions`, every callable name, which the engine turns into the type of
+`rpc()`'s first argument so a misspelt name fails the typecheck. Rendering is
+the build's because only it knows where the app imports the stubs from and
+which global it installs. `make:rsc-action` writes the manifest too, for an
+rpc class as well as an action, loading the class by path first so a
 classmap-authoritative autoloader does not skip what was written a moment
 ago; the engine's dev server watches the file and restarts, so the stub is
 importable when the command returns. Discovery recurses under `app/Rsc`:
 `make:rsc-action Billing/Invoices` nests the class, and a top-level glob
 never found it.
 
-The map is an object even when empty — `json_encode` writes an empty PHP array
-as `[]`, and the engine reads a map. The global's name (`rpc`) is the engine's:
+`actions` is an object even when empty — `json_encode` writes an empty PHP
+array as `[]`, and the engine reads a map. The global's name (`rpc`) is the engine's:
 `rscKit({ hostGlobal })` renames it, and nothing here needs to know.
 
 ### The React Tree Wins The Urls It Has

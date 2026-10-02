@@ -71,12 +71,16 @@ class MakeActionCommand extends Command
         if ($rpc) {
             $this->line('  Reach it from a server component: '.$this->rpcExamples($class));
 
+            // Its names are rpc()'s type, so the manifest is written for it too.
+            require_once $path;
+            $this->call('rsc:host-manifest');
+
             return self::SUCCESS;
         }
 
         $this->line('  '.$this->stubExamples($class));
 
-        // The map is what the build reads and the "use server" stub is
+        // The manifest is what the build reads and the "use server" stub is
         // generated from, so a class that is not in it does not exist to the
         // app. Written here rather than left to the dev script's next run: a
         // dev server watches the file and starts again when it changes, so
@@ -88,7 +92,7 @@ class MakeActionCommand extends Command
         // moment ago is not in the map and discovery would skip it silently.
         require_once $path;
 
-        $this->call('rsc:action-manifest');
+        $this->call('rsc:host-manifest');
 
         return self::SUCCESS;
     }
