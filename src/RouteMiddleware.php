@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
- * Runs a route's middleware, named by a route.ts in the app tree.
+ * Runs a route's middleware, named by a middleware.ts in the app tree.
  *
  * This is what route.php's middleware() and can() become once the engine owns
  * the route table. The names are ordinary Laravel middleware — aliases, groups
