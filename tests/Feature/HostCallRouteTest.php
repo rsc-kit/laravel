@@ -265,3 +265,33 @@ class StoresOrder
         return $request->all();
     }
 }
+
+describe('a failure under app.debug', function () {
+    it('carries where in PHP it failed, for the renderer to show beside its own stack', function () {
+        config()->set('app.debug', true);
+        registerHostFunction('Orders.broken', fn () => throw new RuntimeException('boom'));
+
+        $response = callHost(['function' => 'Orders.broken', 'args' => []]);
+
+        $response->assertStatus(500);
+        $debug = $response->json('debug');
+
+        expect($debug['type'])->toBe(RuntimeException::class)
+            ->and($debug['message'])->toBe('boom')
+            ->and($debug['trace'][0])->toContain('tests/Feature/HostCallRouteTest.php:');
+    });
+
+    it('carries nothing without it: a trace is no part of a production answer', function () {
+        config()->set('app.debug', false);
+        registerHostFunction('Orders.broken', fn () => throw new RuntimeException('boom'));
+
+        expect(callHost(['function' => 'Orders.broken', 'args' => []])->json())->toBe(['error' => 'Server Error']);
+    });
+
+    it('and a refusal carries none either way: it is an answer, not a failure', function () {
+        config()->set('app.debug', true);
+        registerHostFunction('Orders.denied', fn () => abort(403, 'No.'));
+
+        expect(callHost(['function' => 'Orders.denied', 'args' => []])->json())->not->toHaveKey('debug');
+    });
+});
