@@ -63,7 +63,58 @@ class HostTypes
         ksort($types);
         ksort($self->defs);
 
-        return ['types' => $types, 'defs' => $self->defs];
+        return ['types' => array_map(self::signatureJson(...), $types), 'defs' => array_map(self::schemaJson(...), $self->defs)];
+    }
+
+    /**
+     * A signature with every open schema as an object, so it encodes as {}.
+     *
+     * @param  array<string, mixed>  $signature
+     * @return array<string, mixed>
+     */
+    private static function signatureJson(array $signature): array
+    {
+        $signature['params'] = array_map(self::schemaJson(...), $signature['params']);
+
+        foreach (['rest', 'result'] as $key) {
+            if (array_key_exists($key, $signature)) {
+                $signature[$key] = self::schemaJson($signature[$key]);
+            }
+        }
+
+        return $signature;
+    }
+
+    /**
+     * An open schema - "anything" - is {} in JSON Schema, and json_encode
+     * writes an empty PHP array as []. Made an object, at every depth.
+     *
+     * @param  array<string, mixed>  $schema
+     */
+    private static function schemaJson(array $schema): array|object
+    {
+        if ($schema === []) {
+            return (object) [];
+        }
+
+        foreach (['items', 'additionalProperties'] as $key) {
+            if (isset($schema[$key]) && is_array($schema[$key])) {
+                $schema[$key] = self::schemaJson($schema[$key]);
+            }
+        }
+
+        if (isset($schema['anyOf'])) {
+            $schema['anyOf'] = array_map(self::schemaJson(...), $schema['anyOf']);
+        }
+
+        if (isset($schema['properties']) && is_object($schema['properties'])) {
+            $schema['properties'] = (object) array_map(
+                fn ($p) => is_array($p) ? self::schemaJson($p) : $p,
+                (array) $schema['properties'],
+            );
+        }
+
+        return $schema;
     }
 
     /** @param  array{class-string, string}|class-string|Closure  $callable */

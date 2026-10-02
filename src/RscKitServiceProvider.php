@@ -29,7 +29,7 @@ use RscKit\Support\RendererRoutes;
  *
  * That is two things behind one endpoint. Functions the app's server
  * components call, discovered by reflection through Composer's autoloader; and
- * the middleware a route.ts names, run through Laravel's own pipeline. Both
+ * the middleware a middleware.ts names, run through Laravel's own pipeline. Both
  * arrive as a POST from the renderer and leave as JSON.
  */
 class RscKitServiceProvider extends ServiceProvider

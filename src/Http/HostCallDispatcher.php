@@ -17,8 +17,8 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 /**
  * Answers a host call over HTTP.
  *
- * The same conversation the callback socket has, in a form any language can
- * hold up its end of: a JSON body in, a JSON body and a status out. Nothing
+ * The contract every backend adapter keeps, in a form any language can hold
+ * up its end of: a JSON body in, a JSON body and a status out. Nothing
  * here touches an HTTP framework — the caller hands it a decoded body and gets
  * back a status and an array — so binding it to Laravel, to a PSR-15 pipeline,
  * or to anything else is a wrapper rather than a port.
