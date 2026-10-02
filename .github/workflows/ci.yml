@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Pest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - run: vendor/bin/pint --test
+      - run: vendor/bin/pest --compact
+
+  conformance:
+    name: rsc-kit conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - uses: oven-sh/setup-bun@v2
+      # The suite from rsc-kit's main, built from source: the contract this
+      # adapter must keep is whatever the engine reads today.
+      - name: Build the conformance suite
+        run: |
+          git clone --depth 1 https://github.com/rsc-kit/rsc-kit /tmp/rsc-kit
+          cd /tmp/rsc-kit && bun install --frozen-lockfile && cd packages/core && bun run build
+      # tests/Conformance registers the Conformance.* functions the way an
+      # app would; testbench.yaml serves them.
+      - name: Run it against this adapter
+        run: |
+          vendor/bin/testbench rsc:host-manifest --print > /tmp/rsc-host.json
+          PHP_CLI_SERVER_WORKERS=4 vendor/bin/testbench serve --port=8125 --no-reload &
+          for i in $(seq 1 60); do curl -s -o /dev/null 127.0.0.1:8125/ && break; sleep 1; done
+          node /tmp/rsc-kit/packages/core/dist/conformance.js \
+            --endpoint http://127.0.0.1:8125/__rsc/host-call --secret test --manifest /tmp/rsc-host.json

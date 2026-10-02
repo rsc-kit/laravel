@@ -1,0 +1,10 @@
+# For the conformance suite: `vendor/bin/testbench serve` answers host calls
+# with the Conformance.* functions, as an app on this package would.
+providers:
+  - RscKit\RscKitServiceProvider
+  - Tests\Conformance\ConformanceServiceProvider
+
+env:
+  - APP_KEY="base64:Y29uZm9ybWFuY2UtY29uZm9ybWFuY2UtY29uZm9ybWE="
+  - RSC_HOST_CALL_SECRET=test
+  - APP_ENV=testing
