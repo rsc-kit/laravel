@@ -75,7 +75,7 @@ it('refuses to overwrite without --force', function () {
 
 it('is what the manifest discovers, and writes the manifest itself', function () {
     config()->set('rsc.actions_dir', app_path('Rsc/Actions'));
-    File::delete(base_path('rsc-host-actions.json'));
+    File::delete(base_path('rsc-host.json'));
 
     // A name no other test writes: the command loads the class by path, and
     // a class, once declared in this process, stays declared.
@@ -85,9 +85,10 @@ it('is what the manifest discovers, and writes the manifest itself', function ()
     // and the server starts again when the file changes - so the command
     // writes it rather than leaving it to the dev script's next run.
     expect(ActionManifest::discover())->toBe(['shipmentsTrack' => 'Shipments.track'])
-        ->and(json_decode(File::get(base_path('rsc-host-actions.json')), true))->toBe(['shipmentsTrack' => 'Shipments.track']);
+        ->and(json_decode(File::get(base_path('rsc-host.json')), true)['actions'])->toBe(['shipmentsTrack' => 'Shipments.track'])
+        ->and(json_decode(File::get(base_path('rsc-host.json')), true)['functions'])->toContain('Shipments.track');
 
-    File::delete(base_path('rsc-host-actions.json'));
+    File::delete(base_path('rsc-host.json'));
 });
 
 it('a nested class is discovered too', function () {
@@ -99,13 +100,21 @@ it('a nested class is discovered too', function () {
     // command said created, and the stub was not there to import.
     expect(ActionManifest::discover())->toBe(['statementsSend' => 'Statements.send']);
 
-    File::delete(base_path('rsc-host-actions.json'));
+    File::delete(base_path('rsc-host.json'));
 });
 
-it('an rpc class writes no manifest, since the map is of server actions', function () {
-    File::delete(base_path('rsc-host-actions.json'));
+it('an rpc class is in the manifest as a function, never as an action', function () {
+    File::delete(base_path('rsc-host.json'));
 
-    $this->artisan('make:rsc-action', ['name' => 'Orders', '--rpc' => true, '--method' => ['recent']])->assertSuccessful();
+    $this->artisan('make:rsc-action', ['name' => 'Almanacs', '--rpc' => true, '--method' => ['recent']])->assertSuccessful();
 
-    expect(File::exists(base_path('rsc-host-actions.json')))->toBeFalse();
+    // Its names type rpc(), so a misspelt one fails the app's typecheck.
+    // A name no other test declares: a class stays declared for the process.
+    $manifest = json_decode(File::get(base_path('rsc-host.json')), true);
+
+    expect($manifest['functions'])->toContain('Almanacs.recent')
+        ->and($manifest['functions'])->not->toContain('__rsc.middleware')
+        ->and($manifest['actions'])->not->toHaveKey('almanacsRecent');
+
+    File::delete(base_path('rsc-host.json'));
 });

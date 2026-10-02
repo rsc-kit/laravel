@@ -22,7 +22,7 @@ beforeEach(function () {
 afterEach(function () {
     File::deleteDirectory(app_path('Rsc'));
     File::delete(RscKitServiceProvider::callablesCachePath());
-    File::delete(base_path('rsc-host-actions.json'));
+    File::delete(base_path('rsc-host.json'));
 });
 
 it('writes what discovery finds', function () {

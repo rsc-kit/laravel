@@ -11,9 +11,9 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use RscKit\Console\InstallCommand;
 use RscKit\Console\MakeActionCommand;
-use RscKit\Console\RscActionManifestCommand;
 use RscKit\Console\RscCacheCommand;
 use RscKit\Console\RscClearCommand;
+use RscKit\Console\RscHostManifestCommand;
 use RscKit\Http\HostCallController;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Http\RendererProxy;
@@ -114,7 +114,7 @@ class RscKitServiceProvider extends ServiceProvider
             $this->commands([
                 InstallCommand::class,
                 MakeActionCommand::class,
-                RscActionManifestCommand::class,
+                RscHostManifestCommand::class,
                 RscCacheCommand::class,
                 RscClearCommand::class,
             ]);

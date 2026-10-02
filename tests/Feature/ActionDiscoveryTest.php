@@ -120,7 +120,7 @@ test('the written manifest is an object even with nothing in it', function () {
     // refused to start over it.
     Config::set('rsc.actions_dir', '/nonexistent/app/Rsc/Actions');
 
-    $this->artisan('rsc:action-manifest', ['--print' => true])
-        ->expectsOutput('{}')
+    $this->artisan('rsc:host-manifest', ['--print' => true])
+        ->expectsOutputToContain('"actions": {}')
         ->assertSuccessful();
 });
