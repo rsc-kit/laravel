@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\HostTypesFixtures {
     use Illuminate\Foundation\Http\FormRequest;
+    use Illuminate\Support\Carbon;
     use Illuminate\Support\Collection;
 
     enum Status: string
@@ -18,6 +19,8 @@ namespace Tests\Feature\HostTypesFixtures {
             public Status $status,
             public ?OrderData $parent = null,
             public ?string $note = null,
+            public ?Carbon $shippedAt = null,
+            public ?\DateTimeImmutable $raw = null,
         ) {}
     }
 
@@ -107,7 +110,12 @@ namespace {
         expect($order['properties']['status'])->toBe(['type' => 'string', 'enum' => ['open', 'closed']])
             ->and($order['properties']['parent'])->toBe(['anyOf' => [['$ref' => '#/defs/OrderData'], ['type' => 'null']]])
             // json_encode writes every public property, null or not.
-            ->and($order['required'])->toBe(['id', 'note', 'number', 'parent', 'status']);
+            ->and($order['required'])->toBe(['id', 'note', 'number', 'parent', 'raw', 'shippedAt', 'status']);
+
+        // Carbon is an ISO string, or null. PHP's own DateTime encodes as an
+        // object of its parts, so it is left open.
+        expect($order['properties']['shippedAt'])->toBe(['anyOf' => [['type' => 'string', 'format' => 'date-time'], ['type' => 'null']]])
+            ->and($order['properties']['raw'])->toBe(['anyOf' => [[], ['type' => 'null']]]);
     });
 
     it('reads a form request\'s fields from its rules, as the call\'s one argument', function () {
