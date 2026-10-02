@@ -262,15 +262,38 @@ react({ babel: { plugins: ['babel-plugin-react-compiler'] } })
 
 Tailwind, aliases, and any other plugin belong in the same file.
 
-### loading.tsx requirement
+### Pages paint; slots wait
 
-A route needs `loading.tsx` only when the page itself blocks before it can
-paint — an async default export awaiting `rpc()`, or a `route.php` resolving
-`props()` through a closure. The build fails with the offending route named.
+Write the page as a synchronous component. Its headings, copy and frames are
+the stored shell. Each `rpc()` read goes in its own async child, a "slot",
+under its own `<Suspense>` with a skeleton the shape of what it replaces:
 
-Slow work in a child wrapped in its own `<Suspense>` needs nothing, because the
-page still paints a shell immediately. `viewData()` is Blade-only and never
-blocks React, so it is ignored.
+```tsx
+export default function OrdersPage() {
+  return (
+    <section>
+      <h1>Orders</h1>
+      <Suspense fallback={<OrdersSkeleton rows={5} />}>
+        <OrdersSlot />
+      </Suspense>
+    </section>
+  );
+}
+
+async function OrdersSlot() {
+  const orders = await rpc<Order[]>('Orders.recent', 5);
+
+  return <OrderList orders={orders} />;
+}
+```
+
+A page that awaits `rpc()` in its own default export blocks before it can
+paint, and the build fails with the route named. Fix it by moving the read
+into a slot, not by adding `loading.tsx`. `loading.tsx` wraps the whole page
+in one boundary: the heading waits with the data, the slowest read holds back
+the rest, and a 404 or redirect decided under it may already have a 200 on
+the wire. Keep it for a page that is one read and nothing else. Whether a page
+exists for the visitor is a check for `middleware.ts`, which runs first.
 
 ### Partial prerendering (PPR)
 
