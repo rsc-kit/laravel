@@ -332,7 +332,46 @@ class HostCallDispatcher
     {
         report($e);
 
-        return $this->fail(500, config('app.debug') ? $e->getMessage() : 'Server Error');
+        if (! config('app.debug')) {
+            return $this->fail(500, 'Server Error');
+        }
+
+        // Where in PHP it failed, for the renderer to put beside its own
+        // stack: without it a failed rpc() read as a line in a JavaScript
+        // file, and the PHP that threw was a separate search through the
+        // log. Only under app.debug - a trace names files, classes and
+        // arguments' shapes, which is nothing a production response carries.
+        $reply = $this->fail(500, $e->getMessage());
+        $reply['reply']['debug'] = [
+            'type' => $e::class,
+            'message' => $e->getMessage(),
+            'trace' => $this->trace($e),
+        ];
+
+        return $reply;
+    }
+
+    /**
+     * The frames of a throwable, newest first, as "file:line Class->method()".
+     * Paths relative to the app; the framework's own frames are kept, since a
+     * failure inside a query builder is still where it failed.
+     *
+     * @return list<string>
+     */
+    private function trace(\Throwable $e): array
+    {
+        $relative = fn (string $file) => str_starts_with($file, base_path().'/') ? substr($file, strlen(base_path()) + 1) : $file;
+
+        $frames = [$relative($e->getFile()).':'.$e->getLine()];
+
+        foreach (array_slice($e->getTrace(), 0, 40) as $frame) {
+            $where = isset($frame['file']) ? $relative($frame['file']).':'.($frame['line'] ?? 0) : '[internal]';
+            $what = isset($frame['class']) ? $frame['class'].($frame['type'] ?? '->').$frame['function'] : $frame['function'];
+
+            $frames[] = $where.' '.$what.'()';
+        }
+
+        return $frames;
     }
 
     /**
