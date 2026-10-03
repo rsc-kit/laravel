@@ -62,7 +62,7 @@ php artisan rsc:install
 ```
 
 `rsc:install` does the PHP half itself — publishes `config/rsc.php`, generates
-`RSC_HOST_CALL_SECRET` into your `.env` — and runs `rsc-kit init` for the
+`RSC_HOST_CALL_SECRET` and `RSC_SIGNING_SECRET` into your `.env` — and runs `rsc-kit init` for the
 JavaScript half. Nothing you already have is overwritten: where a file exists,
 the exact edit is printed for you to make instead.
 
@@ -161,7 +161,7 @@ points at the line of PHP that threw. Never in production.
 
 | command | what it does |
 | --- | --- |
-| `rsc:install` | publishes `config/rsc.php`, generates the secret, runs `rsc-kit init` for the JavaScript half (`--skip-js` for the PHP half only) |
+| `rsc:install` | publishes `config/rsc.php`, generates both secrets, runs `rsc-kit init` for the JavaScript half (`--skip-js` for the PHP half only) |
 | `rsc:host-manifest` | writes `rsc-host.json` — `actions`, `functions`, and their `types` and `defs` from the PHP signatures. `vite.config.ts` runs it as dev and every build start (`rscKit({ hostManifest })`) |
 | `make:rsc-action` | a server action under `app/Rsc/Actions`, or with `--rpc` a class for `rpc()` under `app/Rsc`; `--method`, `--auth`, `--can`, `--middleware`, `--revalidate`. Writes the manifest too |
 | `rsc:cache` / `rsc:clear` | cache the discovered callables for production; run by `optimize` and `optimize:clear` |

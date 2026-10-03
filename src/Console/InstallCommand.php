@@ -160,37 +160,62 @@ class InstallCommand extends Command
         $env = base_path('.env');
 
         if (! file_exists($env)) {
-            $this->components->warn('No .env file, so no secret was written. Add RSC_HOST_CALL_SECRET yourself.');
+            $this->components->warn('No .env file, so no secrets were written. Add RSC_HOST_CALL_SECRET and RSC_SIGNING_SECRET yourself.');
 
             return;
         }
 
-        $contents = file_get_contents($env);
+        $this->ensureOne(
+            $env,
+            'RSC_HOST_CALL_SECRET',
+            "# Shared with the RSC renderer. Both processes read this, and a\n"
+            ."# mismatch answers every host call with 403.\n",
+        );
 
-        if (preg_match('/^RSC_HOST_CALL_SECRET=.+$/m', $contents) === 1) {
-            $this->components->twoColumnDetail('RSC_HOST_CALL_SECRET', '<fg=gray>already set</>');
+        // Its own key, never the one above: the renderer signs the names a
+        // page refreshes on with it (refreshOn), and production refuses to
+        // serve such a page without one.
+        $this->ensureOne(
+            $env,
+            'RSC_SIGNING_SECRET',
+            "# The renderer signs refreshOn names with this. Its own key, the\n"
+            ."# same on every renderer instance in production.\n",
+        );
+    }
+
+    /**
+     * One secret: left alone when set, generated and appended when not, and
+     * named with no value in .env.example.
+     */
+    private function ensureOne(string $env, string $name, string $comment): void
+    {
+        $contents = (string) file_get_contents($env);
+
+        if (preg_match('/^'.$name.'=.+$/m', $contents) === 1) {
+            $this->components->twoColumnDetail($name, '<fg=gray>already set</>');
 
             return;
         }
 
         $secret = base64_encode(random_bytes(32));
 
-        // Appended with its own heading rather than slotted in beside anything:
-        // this file is hand-edited, and the one thing an installer must not do
-        // to it is move somebody's lines around.
-        file_put_contents($env, rtrim($contents, "\n")."\n\n"
-            ."# Shared with the RSC renderer. Both processes read this, and a\n"
-            ."# mismatch answers every host call with 403.\n"
-            ."RSC_HOST_CALL_SECRET=\"{$secret}\"\n");
+        // An empty line for it is replaced rather than left beside a second
+        // one; otherwise appended with its own heading - this file is
+        // hand-edited, and an installer must not move somebody's lines around.
+        $contents = preg_match('/^'.$name.'=\s*$/m', $contents) === 1
+            ? (string) preg_replace('/^'.$name.'=\s*$/m', "{$name}=\"{$secret}\"", $contents)
+            : rtrim($contents, "\n")."\n\n".$comment."{$name}=\"{$secret}\"\n";
 
-        $this->components->twoColumnDetail('RSC_HOST_CALL_SECRET', '<fg=green>generated in .env</>');
+        file_put_contents($env, $contents);
+
+        $this->components->twoColumnDetail($name, '<fg=green>generated in .env</>');
 
         $example = base_path('.env.example');
 
-        if (file_exists($example) && ! str_contains((string) file_get_contents($example), 'RSC_HOST_CALL_SECRET')) {
-            file_put_contents($example, rtrim((string) file_get_contents($example), "\n")."\n\nRSC_HOST_CALL_SECRET=\n");
+        if (file_exists($example) && ! str_contains((string) file_get_contents($example), $name)) {
+            file_put_contents($example, rtrim((string) file_get_contents($example), "\n")."\n\n{$name}=\n");
 
-            $this->components->twoColumnDetail('.env.example', '<fg=green>named the secret</>');
+            $this->components->twoColumnDetail('.env.example', "<fg=green>named {$name}</>");
         }
     }
 

@@ -34,17 +34,34 @@ it('generates a secret into .env', function () {
 
     expect($env)->toContain('APP_NAME=Laravel');
     expect($env)->toMatch('/RSC_HOST_CALL_SECRET="[A-Za-z0-9+\/]{43}="/');
+    expect($env)->toMatch('/RSC_SIGNING_SECRET="[A-Za-z0-9+\/]{43}="/');
+
+    // Two keys for two jobs: never the same value.
+    preg_match('/RSC_HOST_CALL_SECRET="(.+)"/', $env, $host);
+    preg_match('/RSC_SIGNING_SECRET="(.+)"/', $env, $signing);
+    expect($signing[1])->not->toBe($host[1]);
 });
 
 it('never changes a secret that is already there', function () {
     // The renderer is configured with the same value. Regenerating it turns
     // every host call into a 401, which reads as the application refusing its
     // own data rather than as an installer having run twice.
+    File::put($this->base.'/.env', "RSC_HOST_CALL_SECRET=\"already-set\"\nRSC_SIGNING_SECRET=\"also-set\"\n");
+
+    $this->artisan('rsc:install --skip-js')->assertSuccessful();
+
+    expect(File::get($this->base.'/.env'))->toBe("RSC_HOST_CALL_SECRET=\"already-set\"\nRSC_SIGNING_SECRET=\"also-set\"\n");
+});
+
+it('adds the signing secret to an app installed before it existed, leaving the host secret alone', function () {
     File::put($this->base.'/.env', "RSC_HOST_CALL_SECRET=\"already-set\"\n");
 
     $this->artisan('rsc:install --skip-js')->assertSuccessful();
 
-    expect(File::get($this->base.'/.env'))->toBe("RSC_HOST_CALL_SECRET=\"already-set\"\n");
+    $env = File::get($this->base.'/.env');
+
+    expect($env)->toStartWith("RSC_HOST_CALL_SECRET=\"already-set\"\n");
+    expect($env)->toMatch('/RSC_SIGNING_SECRET="[A-Za-z0-9+\/]{43}="/');
 });
 
 it('leaves an empty assignment to be filled rather than treating it as set', function () {
@@ -52,7 +69,11 @@ it('leaves an empty assignment to be filled rather than treating it as set', fun
 
     $this->artisan('rsc:install --skip-js')->assertSuccessful();
 
-    expect(File::get($this->base.'/.env'))->toMatch('/RSC_HOST_CALL_SECRET="[A-Za-z0-9+\/]{43}="/');
+    $env = File::get($this->base.'/.env');
+
+    expect($env)->toMatch('/RSC_HOST_CALL_SECRET="[A-Za-z0-9+\/]{43}="/');
+    // Filled in place, not left beside a second assignment.
+    expect(substr_count($env, 'RSC_HOST_CALL_SECRET='))->toBe(1);
 });
 
 it('names the secret in .env.example, with no value', function () {
@@ -65,8 +86,14 @@ it('names the secret in .env.example, with no value', function () {
 
     $example = File::get($this->base.'/.env.example');
 
-    expect($example)->toContain('RSC_HOST_CALL_SECRET=');
-    expect($example)->not->toContain(trim(explode('"', File::get($this->base.'/.env'))[1] ?? 'x'));
+    expect($example)->toContain("RSC_HOST_CALL_SECRET=\n");
+    expect($example)->toContain("RSC_SIGNING_SECRET=\n");
+
+    preg_match_all('/="(.+)"/', File::get($this->base.'/.env'), $values);
+
+    foreach ($values[1] as $value) {
+        expect($example)->not->toContain($value);
+    }
 });
 
 it('says so rather than failing when there is no .env', function () {
