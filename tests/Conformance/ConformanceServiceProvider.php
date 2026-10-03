@@ -46,6 +46,11 @@ class ConformanceServiceProvider extends ServiceProvider
             return 'ok';
         });
         $registry->register('Conformance.fail', fn () => throw new RuntimeException('boom'));
+        $registry->register('Conformance.change', function (): string {
+            Rsc::changed('conformance:changed');
+
+            return 'ok';
+        });
         $registry->register('Conformance.authorization', fn (): ?string => request()->header('Authorization'));
     }
 }

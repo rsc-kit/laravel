@@ -7,6 +7,7 @@ use RscKit\CallableRegistry;
 use RscKit\RouteMiddleware;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\HostTypes;
+use RscKit\Versions;
 
 /**
  * Hands the build what this backend offers the app, as rsc-host.json:
@@ -41,7 +42,7 @@ class RscHostManifestCommand extends Command
         // without. The registry adds what the app registered by hand.
         $callables = array_filter(
             [...CallableRegistry::discover(app_path('Rsc')), ...$registry->all()],
-            fn (string $name) => $name !== RouteMiddleware::FUNCTION,
+            fn (string $name) => $name !== RouteMiddleware::FUNCTION && $name !== Versions::FUNCTION,
             ARRAY_FILTER_USE_KEY,
         );
 

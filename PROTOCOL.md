@@ -159,6 +159,44 @@ Anything else is a refusal, and the engine reads anything but a literal
 `__rsc.middleware` is registered by the service provider, not discovered, and
 is left out of the manifest.
 
+## Saying data changed
+
+A page or a section names what it refreshes on:
+
+```ts
+export default section('repos', Repos, { refreshOn: ({ params }) => [`team:${params.team}:repos`] })
+```
+
+and this side says when that changed — from a webhook, a job, a listener,
+anywhere, not only an action:
+
+```php
+Rsc::changed("team:$teamId:repos");
+```
+
+Every open tab showing it refreshes. A name has a version, a number in the
+app's cache that moves when it is said to have changed; nothing else travels.
+The renderer reads versions at render and, for every open tab, asks the
+reserved function for the ones that moved since:
+
+```json
+{ "function": "__rsc.changed", "args": [{ "since": { "team:1:repos": 3 }, "wait": 5000 }] }
+```
+
+The answer is `{ "result": { "versions": { "team:1:repos": 4 } } }` — only
+the names whose version differs from `since`, an empty object when none does;
+a name never changed is at 0. `wait` is how long the renderer would let the
+call be held for one to move. Laravel answers at once — a PHP-FPM worker held
+open is one the next request waits for — and the renderer asks again on its
+interval, a couple of seconds apart. The protocol allows either, which is
+what lets the same page run on a backend that can wait and one that cannot.
+
+`__rsc.changed` is registered by the service provider, not discovered, and is
+left out of the manifest. The versions live in the default cache store, or
+the one `rsc.versions_store` names: a store every server shares, since a webhook
+lands on one server and a tab's stream is held by whichever renderer it
+reached.
+
 ## rsc-host.json
 
 `php artisan rsc:host-manifest` writes it at the project root, beside

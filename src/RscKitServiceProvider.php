@@ -64,6 +64,9 @@ class RscKitServiceProvider extends ServiceProvider
         // request's marks into the next.
         $this->app->scoped(Revalidation::class);
 
+        // Versions in the app's cache, shared by every server; see Versions.
+        $this->app->singleton(Versions::class, fn () => new Versions(config('rsc.versions_store')));
+
         $this->app->singleton(CallableRegistry::class, function ($app) {
             $registry = new CallableRegistry($app);
 
@@ -84,6 +87,12 @@ class RscKitServiceProvider extends ServiceProvider
             $registry->register(
                 RouteMiddleware::FUNCTION,
                 fn (array $names = []) => (new RouteMiddleware($app))->run($names),
+            );
+
+            // And the one it asks tag versions on.
+            $registry->register(
+                Versions::FUNCTION,
+                fn (array $query = []) => $app->make(Versions::class)->answer($query),
             );
 
             return $registry;
