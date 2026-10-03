@@ -290,8 +290,14 @@ Rsc::changed("team:{$team->id}:repos");
 ```
 
 - `refreshOn` is a list of names, or a function of the page's `params` and
-  `searchParams`. It runs per request, so `cookies()` works: a name for the
-  signed-in user is fine. A page can `export const refreshOn` too; a change
+  `searchParams` - given to it already awaited, so
+  `({ params }) => [\`team:${params.team}:repos\`]` is right. It runs per
+  request, so `cookies()` works: a name for the signed-in user is fine.
+- A name is a signal, not data or a permission. A refresh renders for its
+  own visitor, through their session, guards and rpc() calls, so per-user
+  data stays per user: a chat's `conversation:{id}` refreshes both people's
+  tabs, and each sees their own view. A tab can only listen for names its
+  page rendered with. Use ids in names - never emails or anything secret. A page can `export const refreshOn` too; a change
   refreshes the page.
 - Name what the data is, not where it shows: `team:{id}:repos`,
   `deploy:{id}`, `order:{id}`. Two sections on the same name both refresh.
@@ -371,6 +377,9 @@ export function NewOrder() {
   string, the same on every instance. It is not the host-call secret and
   does not fall back to it. In production, an app that uses `refreshOn`
   without it refuses to serve.
+- `RSC_STREAM_KEEPALIVE_MS` (the renderer, default 8000): set it below the
+  idle timeout of anything in front that drops quiet connections, or open
+  tabs keep reconnecting.
 - `RSC_BROADCAST` (Laravel), `RSC_BROADCAST_URL` and `RSC_BROADCAST_KEY` (the
   renderer): announce each change on Laravel's broadcasting so tabs hear it
   at once. `RSC_BROADCAST_CHANNEL` renames the channel.
