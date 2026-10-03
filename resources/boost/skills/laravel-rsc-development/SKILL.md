@@ -260,6 +260,12 @@ import { ordersCancel } from '../../server-actions.generated'
 - A redirect from an action renders the destination fresh, so a cookie or
   membership the action changed is already reflected. No revalidate needed
   before it.
+- `Rsc::changed("team:$teamId:repos")` is for a change that is not an
+  action's answer: a webhook, a job, a listener, another user. A section
+  that declared the name - `section('repos', Repos, { refreshOn: ({ params }) =>
+  [`team:${params.team}:repos`] })` - refreshes in every open tab, with
+  nothing polling. Versions live in the cache; with several servers, use a
+  store they share (`rsc.versions_store`).
 
 ## Forms
 

@@ -73,4 +73,12 @@ return [
 
     'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
+
+    /*
+     * Where versions live - Rsc::changed() moves them, and the renderer
+     * reads them for every open tab. A cache store every server of the app
+     * shares; null is the default store. A store that is per server (file,
+     * array) means a change on one server is not seen from another.
+     */
+    'versions_store' => env('RSC_VERSIONS_STORE'),
 ];

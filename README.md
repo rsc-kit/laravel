@@ -23,6 +23,7 @@ composer require rsc-kit/laravel
 - **Partial prerendering** — a static shell at build time, the rest streamed
 - **Parallel routes and interception** — `@folder` slots, `(.)` modals
 - **Typed routes** — the build writes the urls it found, so a link to a page that does not exist fails the typecheck
+- **Refresh on change** — a section names what it refreshes on; `Rsc::changed("team:$id:repos")` from a webhook or a job refreshes it in every open tab, with nothing polling
 
 ## How it fits together
 
