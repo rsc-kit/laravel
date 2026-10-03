@@ -367,7 +367,7 @@ export function NewOrder() {
 ## Commands
 
 ```sh
-php artisan rsc:install          # config, secret, and the JavaScript half
+php artisan rsc:install          # config, both secrets, and the JavaScript half
 php artisan make:rsc-action ...  # an action, or --rpc for an rpc() class
 php artisan rsc:host-manifest    # rsc-host.json; Vite runs it for you
 php artisan optimize             # includes rsc:cache, the discovered callables
