@@ -100,6 +100,17 @@ return [
     'versions_keep_days' => (int) env('RSC_VERSIONS_KEEP_DAYS', 30),
 
     /*
+     * Broadcast "a version moved" on every Rsc::changed(), so the renderer
+     * asks the moment something changes rather than every two seconds. Needs
+     * Laravel's broadcasting set up (php artisan install:broadcasting) with a
+     * Pusher-protocol server - Reverb, Pusher, Soketi - and the renderer told
+     * where it is: RSC_BROADCAST_URL and RSC_BROADCAST_KEY. The event carries
+     * no names, so the public channel reveals nothing.
+     */
+    'broadcast' => (bool) env('RSC_BROADCAST', false),
+    'broadcast_channel' => env('RSC_BROADCAST_CHANNEL', 'rsc-versions'),
+
+    /*
      * For 'cache': a store every server shares; null is the default store.
      * A store that is per server (file, array) means a change on one server
      * is not seen from another.

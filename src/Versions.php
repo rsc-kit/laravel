@@ -6,6 +6,7 @@ use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use RscKit\Events\VersionsChanged;
 
 /**
  * Versions, in the app's cache.
@@ -47,6 +48,8 @@ class Versions
         private readonly string $table = 'rsc_versions',
         private readonly ?string $connection = null,
         private readonly int $keepDays = 30,
+        private readonly bool $broadcast = false,
+        private readonly string $channel = 'rsc-versions',
     ) {}
 
     /**
@@ -87,10 +90,20 @@ class Versions
 
         if ($this->driver === 'database') {
             $this->changedInTable($names);
-
-            return;
+        } else {
+            $this->changedInCache($names);
         }
 
+        // Wake the renderers listening on the broadcast, after the write -
+        // and, inside a transaction, after it commits.
+        if ($this->broadcast) {
+            event(new VersionsChanged($this->channel));
+        }
+    }
+
+    /** @param  list<string>  $names */
+    private function changedInCache(array $names): void
+    {
         foreach ($names as $name) {
             $key = self::PREFIX.$name;
 

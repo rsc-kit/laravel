@@ -313,9 +313,13 @@ Rsc::changed("team:{$team->id}:repos");
 - `RSC_VERSIONS=database` (publish `rsc-migrations`, migrate) is for pruning
   versions on a schedule, or for writers outside Laravel. Laravel still
   answers the renderer from the table.
-- Do not have the renderer read the database to save those requests unless
-  two seconds is genuinely too slow: it then needs the credentials, a
-  driver, and the table's layout.
+- For instant updates, use broadcasting, not the database: with Laravel's
+  broadcasting set up (Reverb, Pusher, Soketi), set `RSC_BROADCAST=true`, and
+  give the renderer `RSC_BROADCAST_URL` and `RSC_BROADCAST_KEY`. Each
+  `Rsc::changed()` announces a change (no names on the channel), the
+  renderer asks Laravel at once, and otherwise asks only every 30 seconds.
+- Do not have the renderer read Laravel's database: it would need the
+  credentials, a driver and the table's layout.
 - With `RSC_VERSIONS=database`, schedule `rsc:prune-versions` daily: a row
   is kept for every name that ever changed. Deleting is always safe (a
   version is a time and never repeats). Cache keys expire on their own
@@ -367,6 +371,9 @@ export function NewOrder() {
   string, the same on every instance. It is not the host-call secret and
   does not fall back to it. In production, an app that uses `refreshOn`
   without it refuses to serve.
+- `RSC_BROADCAST` (Laravel), `RSC_BROADCAST_URL` and `RSC_BROADCAST_KEY` (the
+  renderer): announce each change on Laravel's broadcasting so tabs hear it
+  at once. `RSC_BROADCAST_CHANNEL` renames the channel.
 - `RSC_VERSIONS` (`cache` or `database`), `RSC_VERSIONS_STORE`,
   `RSC_VERSIONS_TABLE`, `RSC_VERSIONS_CONNECTION`: where `Rsc::changed()`
   keeps versions. `RSC_VERSIONS_KEEP_DAYS` (30): how long an unchanged name

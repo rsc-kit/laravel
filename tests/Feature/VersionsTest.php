@@ -1,9 +1,12 @@
 <?php
 
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use RscKit\CallableRegistry;
+use RscKit\Events\VersionsChanged;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Rsc;
 use RscKit\Versions;
@@ -179,4 +182,32 @@ describe('kept in the rsc_versions table', function () {
 
 it('has nothing to prune in cache mode: keys expire on their own', function () {
     $this->artisan('rsc:prune-versions')->expectsOutputToContain('expire on their own')->assertSuccessful();
+});
+
+describe('broadcasting a change', function () {
+    it('wakes listening renderers when rsc.broadcast is on, and not otherwise', function () {
+        Event::fake([VersionsChanged::class]);
+
+        Rsc::changed('inbox:7');
+        Event::assertNotDispatched(VersionsChanged::class);
+
+        app()->forgetInstance(Versions::class);
+        app()->singleton(Versions::class, fn () => new Versions(broadcast: true));
+
+        Rsc::changed('inbox:7', 'conversation:42');
+        Event::assertDispatchedTimes(VersionsChanged::class, 1);
+    });
+
+    it('carries no names: the channel is public, and names may be one visitor\'s', function () {
+        $event = new VersionsChanged;
+
+        expect($event->broadcastWith())->toBe([])
+            ->and($event->broadcastOn()->name)->toBe('rsc-versions')
+            ->and($event->broadcastAs())->toBe('rsc.changed')
+            ->and($event)->toBeInstanceOf(ShouldDispatchAfterCommit::class);
+    });
+
+    it('broadcasts on the channel the config names', function () {
+        expect((new VersionsChanged('my-app-versions'))->broadcastOn()->name)->toBe('my-app-versions');
+    });
 });

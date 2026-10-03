@@ -209,10 +209,23 @@ RSC_VERSIONS=database
 the same table Go and the JavaScript stores use, so a cron job or another
 service can write to it too.
 
-A renderer *can* read that table itself and listen for the NOTIFY, so changes
-arrive at once and PHP answers nothing for watching. It is a trade, not an
-upgrade: the renderer then holds the database credentials and a driver, and
-depends on the table's layout. Reach for it only when two seconds is too slow.
+**Instant, with broadcasting.** If the app has Laravel's broadcasting set up
+(`php artisan install:broadcasting`) with a server that speaks the Pusher
+protocol - Reverb, Pusher, Soketi - `Rsc::changed()` can announce each change:
+
+```sh
+RSC_BROADCAST=true                      # Laravel: announce on every Rsc::changed()
+RSC_BROADCAST_URL=wss://ws.example.com  # the renderer: where to listen
+RSC_BROADCAST_KEY=your-app-key          # the renderer: the server's app key
+```
+
+The renderer subscribes to the `rsc-versions` channel and, on each
+announcement, asks `__rsc.changed` at once - so a change reaches the tabs in
+a moment, and between changes the renderer asks only every thirty seconds, as
+a safety net. The announcement (`rsc.changed`) carries nothing: the channel is
+public, so names - which may be one visitor's - never go over it, and
+Laravel still answers which moved. It is sent after the surrounding
+transaction commits.
 
 **Versions and cleanup.** A version is the time a name last changed, in
 milliseconds - one past the old value if that is larger - so it never

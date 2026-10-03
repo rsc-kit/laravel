@@ -72,6 +72,8 @@ class RscKitServiceProvider extends ServiceProvider
             config('rsc.versions_table', 'rsc_versions'),
             config('rsc.versions_connection'),
             (int) config('rsc.versions_keep_days', 30),
+            (bool) config('rsc.broadcast', false),
+            (string) config('rsc.broadcast_channel', 'rsc-versions'),
         ));
 
         $this->app->singleton(CallableRegistry::class, function ($app) {
