@@ -162,6 +162,7 @@ points at the line of PHP that threw. Never in production.
 | command | what it does |
 | --- | --- |
 | `rsc:install` | publishes `config/rsc.php`, generates both secrets, runs `rsc-kit init` for the JavaScript half (`--skip-js` for the PHP half only) |
+| `rsc:prune-versions` | deletes `refreshOn` versions nobody changed in `rsc.versions_keep_days` (database mode); schedule it daily |
 | `rsc:host-manifest` | writes `rsc-host.json` — `actions`, `functions`, and their `types` and `defs` from the PHP signatures. `vite.config.ts` runs it as dev and every build start (`rscKit({ hostManifest })`) |
 | `make:rsc-action` | a server action under `app/Rsc/Actions`, or with `--rpc` a class for `rpc()` under `app/Rsc`; `--method`, `--auth`, `--can`, `--middleware`, `--revalidate`. Writes the manifest too |
 | `rsc:cache` / `rsc:clear` | cache the discovered callables for production; run by `optimize` and `optimize:clear` |

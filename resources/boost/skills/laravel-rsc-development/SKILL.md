@@ -313,6 +313,10 @@ Rsc::changed("team:{$team->id}:repos");
   `installVersionSource(postgresVersions(postgres(process.env.DATABASE_URL!)))`.
   The renderer reads `rsc_versions` itself, so watching costs PHP no
   requests, and on Postgres the NOTIFY makes changes arrive at once.
+- With `RSC_VERSIONS=database`, schedule `rsc:prune-versions` daily: a row
+  is kept for every name that ever changed. Deleting is always safe (a
+  version is a time and never repeats). Cache keys expire on their own
+  after `RSC_VERSIONS_KEEP_DAYS` (30).
 - In development the browser console lists what each region watches. A
   region missing there rendered no names; the renderer's log says why.
   Hidden tabs stop watching and catch up when shown.
@@ -362,7 +366,8 @@ export function NewOrder() {
   without it refuses to serve.
 - `RSC_VERSIONS` (`cache` or `database`), `RSC_VERSIONS_STORE`,
   `RSC_VERSIONS_TABLE`, `RSC_VERSIONS_CONNECTION`: where `Rsc::changed()`
-  keeps versions.
+  keeps versions. `RSC_VERSIONS_KEEP_DAYS` (30): how long an unchanged name
+  is kept.
 
 ## Commands
 
@@ -370,6 +375,7 @@ export function NewOrder() {
 php artisan rsc:install          # config, both secrets, and the JavaScript half
 php artisan make:rsc-action ...  # an action, or --rpc for an rpc() class
 php artisan rsc:host-manifest    # rsc-host.json; Vite runs it for you
+php artisan rsc:prune-versions   # delete refreshOn versions nobody changed in 30 days
 php artisan optimize             # includes rsc:cache, the discovered callables
 npm run dev                      # Vite is the renderer
 npm run build                    # .output/

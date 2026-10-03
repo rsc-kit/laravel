@@ -208,6 +208,16 @@ Watching costs PHP nothing, and on Postgres a change reaches the tabs at once.
 It is the same table Go and the JavaScript stores use, so a cron job or
 another service can write to it too.
 
+**Versions and cleanup.** A version is the time a name last changed, in
+milliseconds - one past the old value if that is larger - so it never
+repeats, and an old name can be deleted at any time: a tab still holding it
+refreshes once. Cache keys expire on their own after `rsc.versions_keep_days`
+(30). In database mode, schedule the pruning:
+
+```php
+Schedule::command('rsc:prune-versions')->daily();   // --days=N to choose the age
+```
+
 `__rsc.changed` is registered by the service provider, not discovered, and is
 left out of the manifest. The versions live in the default cache store, or
 the one `rsc.versions_store` names: a store every server shares, since a webhook

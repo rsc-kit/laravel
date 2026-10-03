@@ -11,6 +11,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use RscKit\Console\InstallCommand;
 use RscKit\Console\MakeActionCommand;
+use RscKit\Console\PruneVersionsCommand;
 use RscKit\Console\RscCacheCommand;
 use RscKit\Console\RscClearCommand;
 use RscKit\Console\RscHostManifestCommand;
@@ -70,6 +71,7 @@ class RscKitServiceProvider extends ServiceProvider
             config('rsc.versions', 'cache') === 'database' ? 'database' : 'cache',
             config('rsc.versions_table', 'rsc_versions'),
             config('rsc.versions_connection'),
+            (int) config('rsc.versions_keep_days', 30),
         ));
 
         $this->app->singleton(CallableRegistry::class, function ($app) {
@@ -136,6 +138,7 @@ class RscKitServiceProvider extends ServiceProvider
                 RscHostManifestCommand::class,
                 RscCacheCommand::class,
                 RscClearCommand::class,
+                PruneVersionsCommand::class,
             ]);
 
             // With route:cache and the rest, so a deploy that already runs

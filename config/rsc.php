@@ -91,6 +91,13 @@ return [
     'versions_connection' => env('RSC_VERSIONS_CONNECTION'),
 
     /*
+     * How long a name nobody changes is kept: cache keys expire after it, and
+     * `php artisan rsc:prune-versions` deletes table rows older than it.
+     * Deleting is always safe; a tab still holding the name refreshes once.
+     */
+    'versions_keep_days' => (int) env('RSC_VERSIONS_KEEP_DAYS', 30),
+
+    /*
      * For 'cache': a store every server shares; null is the default store.
      * A store that is per server (file, array) means a change on one server
      * is not seen from another.
