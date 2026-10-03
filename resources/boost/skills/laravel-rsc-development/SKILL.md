@@ -16,6 +16,8 @@ Activate this skill when:
 - Reading Laravel data from a page with `rpc()`
 - Writing a server action, a form, or a button that calls an action
 - Guarding a route with `middleware.ts`
+- Keeping a page current when data changes outside the tab - a webhook, a
+  job, another user - instead of polling
 - Deciding where a Suspense boundary goes, or why the build refused a route
 - Setting up development, tests or a production deploy
 
@@ -45,7 +47,7 @@ resources/js/app/            the route tree
 ├── page.tsx                 /
 ├── orders/
 │   ├── page.tsx             /orders
-│   ├── orders.section.tsx   a region an action can refresh by name
+│   ├── orders.section.tsx   a region an action, or Rsc::changed(), can refresh
 │   └── middleware.ts        Laravel middleware for /orders and below
 ├── [team]/                  dynamic segment: params.team
 ├── [...path]/               catch-all
@@ -260,18 +262,60 @@ import { ordersCancel } from '../../server-actions.generated'
 - A redirect from an action renders the destination fresh, so a cookie or
   membership the action changed is already reflected. No revalidate needed
   before it.
-- `Rsc::changed("team:$teamId:repos")` is for a change that is not an
-  action's answer: a webhook, a job, a listener, another user. A section
-  that declared the name - `section('repos', Repos, { refreshOn: ({ params }) =>
-  [`team:${params.team}:repos`] })` - refreshes in every open tab, with
-  nothing polling. Versions live in the cache; with several servers, use a
-  store they share (`rsc.versions_store`).
-- At scale, `RSC_VERSIONS=database` (publish `rsc-migrations`, migrate)
-  keeps versions in the `rsc_versions` table and the renderer reads it
-  itself (`installVersionSource(postgresVersions(sql))` in
-  `instrumentation.ts`): watching then costs PHP no requests, and on Postgres
-  changes arrive instantly via NOTIFY.
-- Set `RSC_SIGNING_SECRET` for the renderer (not the host-call secret).
+- A change that did not come from the tab - a webhook, a job, another user -
+  is `Rsc::changed()`, below.
+
+## Refreshing on Outside Changes
+
+`Rsc::revalidate()` answers the tab that ran the action. For a change made
+anywhere else - a webhook, a queued job, a listener, another user - a
+section names what it depends on, and PHP says when that changed. Every
+open tab showing it refreshes, with nothing polling and no client code.
+
+```tsx
+// resources/js/app/t/[team]/repos.section.tsx
+import { section } from '@rsc-kit/core/section'
+
+export default section('repos', async function Repos({ params }) {
+  const { team } = await params
+  const repos = await rpc('Repos.list', team)
+
+  return <ul>{repos.map((r) => <li key={r.id}>{r.name}</li>)}</ul>
+}, { refreshOn: ({ params }) => [`team:${params.team}:repos`] })
+```
+
+```php
+// a webhook controller, a job's handle(), a listener
+Rsc::changed("team:{$team->id}:repos");
+```
+
+- `refreshOn` is a list of names, or a function of the page's `params` and
+  `searchParams`. It runs per request, so `cookies()` works: a name for the
+  signed-in user is fine. A page can `export const refreshOn` too; a change
+  refreshes the page.
+- Name what the data is, not where it shows: `team:{id}:repos`,
+  `deploy:{id}`, `order:{id}`. Two sections on the same name both refresh.
+- Call `Rsc::changed()` after the write is committed - in a transaction,
+  `DB::afterCommit(fn () => Rsc::changed(...))` - or a tab can refresh
+  before the data is there to read.
+- Inside an action, keep `Rsc::revalidate()` for the caller's own tab and add
+  `Rsc::changed()` for everyone else's.
+- `shared: true` on a section that is the same for everyone allowed to see
+  the page: tabs refreshing because of the same change get one render. Never
+  on anything per visitor - `rpc()` calls run with the first tab's session.
+- Versions live in the cache by default: use a store every server shares
+  (Redis, database), set with `RSC_VERSIONS_STORE` when it is not the
+  default. The renderer asks PHP which moved every couple of seconds while
+  any tab is watching.
+- At scale, `RSC_VERSIONS=database`: publish the migration
+  (`php artisan vendor:publish --tag=rsc-migrations`, then migrate), and in
+  the renderer's `instrumentation.ts`
+  `installVersionSource(postgresVersions(postgres(process.env.DATABASE_URL!)))`.
+  The renderer reads `rsc_versions` itself, so watching costs PHP no
+  requests, and on Postgres the NOTIFY makes changes arrive at once.
+- In development the browser console lists what each region watches. A
+  region missing there rendered no names; the renderer's log says why.
+  Hidden tabs stop watching and catch up when shown.
 
 ## Forms
 
@@ -312,6 +356,13 @@ export function NewOrder() {
   build refuses a `PUBLIC_*` variable.
 - `RSC_HOST_CALL_SECRET` and `APP_URL` (or `RSC_BACKEND`) are read by both
   Laravel and the renderer from the app's `.env`.
+- `RSC_SIGNING_SECRET` is the renderer's, for `refreshOn`: a long random
+  string, the same on every instance. It is not the host-call secret and
+  does not fall back to it. In production, an app that uses `refreshOn`
+  without it refuses to serve.
+- `RSC_VERSIONS` (`cache` or `database`), `RSC_VERSIONS_STORE`,
+  `RSC_VERSIONS_TABLE`, `RSC_VERSIONS_CONNECTION`: where `Rsc::changed()`
+  keeps versions.
 
 ## Commands
 
@@ -358,6 +409,18 @@ const app = await createTestApp({
 `hostReply` also has `unauthorized()`, `redirect(to)`, `refuse(status,
 message)`, `invalid(errors)` and `revalidating(result, ...regions)`.
 
+For `refreshOn`, `testChanges()` answers the renderer's version asks the way
+Laravel does, and its `changed()` stands in for `Rsc::changed()`:
+
+```ts
+import { testChanges } from '@rsc-kit/core/testing'
+
+const changes = testChanges()
+const app = await createTestApp({ host: { ...changes.host, 'Repos.list': () => repos } })
+
+changes.changed('team:1:repos')   // what the webhook would say
+```
+
 ## Production
 
 ```sh
@@ -372,6 +435,9 @@ npm ci && npm run build
   is required; without one the endpoint is not registered.
 - Add the renderer to `trustProxies`, so `url()` and redirects use the public
   origin.
+- With `refreshOn`: set `RSC_SIGNING_SECRET` on every renderer instance, and
+  keep versions where every server reads them - a shared cache store, or
+  `RSC_VERSIONS=database`.
 
 ## Do Not
 
@@ -380,5 +446,10 @@ npm ci && npm run build
 - Edit `server-actions.generated.ts` or `rsc-host.json` by hand.
 - Add `loading.tsx` to fix a refused route; move the read into a slot.
 - Check access in a layout; use `middleware.ts`.
+- Poll with `usePolling` for data the backend can announce: `refreshOn` plus
+  `Rsc::changed()`.
+- Put `shared: true` on a section that shows anything per visitor.
+- Reuse `RSC_HOST_CALL_SECRET` as `RSC_SIGNING_SECRET`; they are two keys
+  for two jobs.
 - Use the old `laravel-rsc/form` or `rscRoutes` imports; it is
   `@rsc-kit/core/form` and `rscKit` from `@rsc-kit/core/vite`.
