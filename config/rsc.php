@@ -75,10 +75,25 @@ return [
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
 
     /*
-     * Where versions live - Rsc::changed() moves them, and the renderer
-     * reads them for every open tab. A cache store every server of the app
-     * shares; null is the default store. A store that is per server (file,
-     * array) means a change on one server is not seen from another.
+     * Where Rsc::changed() keeps versions for refreshOn.
+     *
+     * 'cache' (the default): the app's cache. The renderer asks PHP which
+     * versions moved, about every two seconds while any tab is watching - one
+     * small request each time, since PHP cannot hold the question open.
+     *
+     * 'database': the rsc_versions table (php artisan vendor:publish
+     * --tag=rsc-migrations). The renderer reads it itself with
+     * postgresVersions or sqlVersions, so watching costs PHP nothing, and on
+     * Postgres a NOTIFY reaches it the moment a version moves.
+     */
+    'versions' => env('RSC_VERSIONS', 'cache'),
+    'versions_table' => env('RSC_VERSIONS_TABLE', 'rsc_versions'),
+    'versions_connection' => env('RSC_VERSIONS_CONNECTION'),
+
+    /*
+     * For 'cache': a store every server shares; null is the default store.
+     * A store that is per server (file, array) means a change on one server
+     * is not seen from another.
      */
     'versions_store' => env('RSC_VERSIONS_STORE'),
 ];

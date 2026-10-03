@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use RscKit\CallableRegistry;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Rsc;
@@ -69,4 +70,34 @@ it('is the registry\'s own, not a function of the app', function () {
     $manifest = json_decode(Artisan::output(), true);
 
     expect($manifest['functions'])->not->toContain(Versions::FUNCTION);
+});
+
+describe('kept in the rsc_versions table', function () {
+    beforeEach(function () {
+        (require __DIR__.'/../../database/migrations/2026_10_03_000000_create_rsc_versions_table.php')->up();
+
+        config()->set('rsc.versions', 'database');
+        app()->forgetInstance(Versions::class);
+    });
+
+    it('moves a version with one upsert per name, and answers from the table', function () {
+        Rsc::changed('orders');
+        Rsc::changed('orders', 'orders', 'stock');
+
+        expect(DB::table('rsc_versions')->orderBy('name')->pluck('version', 'name')->map(fn ($v) => (int) $v)->all())
+            ->toBe(['orders' => 2, 'stock' => 1]);
+        expect(askChanged(['orders' => 0, 'stock' => 1, 'quiet' => 0]))->toBe(['orders' => 2]);
+    });
+
+    it('writes the table every store reads: name and version, nothing else', function () {
+        Rsc::changed('restoration:42');
+
+        expect((array) DB::table('rsc_versions')->first())->toBe(['name' => 'restoration:42', 'version' => 1]);
+    });
+
+    it('leaves the cache alone', function () {
+        Rsc::changed('orders');
+
+        expect(Cache::get(Versions::PREFIX.'orders'))->toBeNull();
+    });
 });
