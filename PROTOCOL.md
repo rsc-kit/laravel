@@ -191,6 +191,23 @@ open is one the next request waits for — and the renderer asks again on its
 interval, a couple of seconds apart. The protocol allows either, which is
 what lets the same page run on a backend that can wait and one that cannot.
 
+**Watching for free: `RSC_VERSIONS=database`.** Answering at once means the
+renderer asks again every couple of seconds while any tab is watching - one
+small PHP request each time, whether anything changed or not. To take PHP out
+of watching altogether, keep the versions in the `rsc_versions` table:
+
+```sh
+php artisan vendor:publish --tag=rsc-migrations && php artisan migrate
+RSC_VERSIONS=database
+```
+
+`Rsc::changed()` then writes one upsert per name - and on Postgres sends a
+`NOTIFY rsc_versions` - and the renderer reads the table itself
+(`installVersionSource(postgresVersions(sql))` in its `instrumentation.ts`).
+Watching costs PHP nothing, and on Postgres a change reaches the tabs at once.
+It is the same table Go and the JavaScript stores use, so a cron job or
+another service can write to it too.
+
 `__rsc.changed` is registered by the service provider, not discovered, and is
 left out of the manifest. The versions live in the default cache store, or
 the one `rsc.versions_store` names: a store every server shares, since a webhook

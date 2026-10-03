@@ -3,7 +3,9 @@
 namespace RscKit;
 
 use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Versions, in the app's cache.
@@ -32,7 +34,24 @@ class Versions
 
     public const PREFIX = 'rsc:version:';
 
-    public function __construct(private readonly ?string $store = null) {}
+    /** The channel a Postgres NOTIFY goes out on, which the renderer's postgresVersions listens to. */
+    public const CHANNEL = 'rsc_versions';
+
+    /**
+     * @param  'cache'|'database'  $driver  Where versions are kept: the cache by default; the
+     *                                      `rsc_versions` table, which the renderer can read itself
+     */
+    public function __construct(
+        private readonly ?string $store = null,
+        private readonly string $driver = 'cache',
+        private readonly string $table = 'rsc_versions',
+        private readonly ?string $connection = null,
+    ) {}
+
+    private function db(): Connection
+    {
+        return DB::connection($this->connection);
+    }
 
     private function cache(): Repository
     {
@@ -42,13 +61,47 @@ class Versions
     /** Say these names changed. */
     public function changed(string ...$names): void
     {
-        foreach (array_unique($names) as $name) {
+        $names = array_values(array_unique($names));
+
+        if ($names === []) {
+            return;
+        }
+
+        if ($this->driver === 'database') {
+            $this->changedInTable($names);
+
+            return;
+        }
+
+        foreach ($names as $name) {
             $key = self::PREFIX.$name;
 
             // The first change makes the key, forever; the rest count.
             if (! $this->cache()->add($key, 1)) {
                 $this->cache()->increment($key);
             }
+        }
+    }
+
+    /**
+     * One upsert per name - the cross-process contract every store shares -
+     * and on Postgres a NOTIFY, so a renderer listening hears it at once.
+     *
+     * @param  list<string>  $names
+     */
+    private function changedInTable(array $names): void
+    {
+        $db = $this->db();
+        $version = $db->getQueryGrammar()->wrap($this->table.'.version');
+
+        $db->table($this->table)->upsert(
+            array_map(fn (string $name) => ['name' => $name, 'version' => 1], $names),
+            ['name'],
+            ['version' => $db->raw($version.' + 1')],
+        );
+
+        if ($db->getDriverName() === 'pgsql') {
+            $db->statement('NOTIFY '.self::CHANNEL);
         }
     }
 
@@ -64,9 +117,16 @@ class Versions
             return [];
         }
 
-        $names = array_keys($since);
-        $keys = array_map(fn (string $name) => self::PREFIX.$name, $names);
-        $stored = $this->cache()->many($keys);
+        $names = array_map('strval', array_keys($since));
+
+        if ($this->driver === 'database') {
+            $stored = $this->db()->table($this->table)->whereIn('name', $names)->pluck('version', 'name')->all();
+            $keys = $names;
+        } else {
+            $keys = array_map(fn (string $name) => self::PREFIX.$name, $names);
+            $stored = $this->cache()->many($keys);
+        }
+
         $differ = [];
 
         foreach ($names as $i => $name) {

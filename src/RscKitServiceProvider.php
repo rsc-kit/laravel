@@ -65,7 +65,12 @@ class RscKitServiceProvider extends ServiceProvider
         $this->app->scoped(Revalidation::class);
 
         // Versions in the app's cache, shared by every server; see Versions.
-        $this->app->singleton(Versions::class, fn () => new Versions(config('rsc.versions_store')));
+        $this->app->singleton(Versions::class, fn () => new Versions(
+            config('rsc.versions_store'),
+            config('rsc.versions', 'cache') === 'database' ? 'database' : 'cache',
+            config('rsc.versions_table', 'rsc_versions'),
+            config('rsc.versions_connection'),
+        ));
 
         $this->app->singleton(CallableRegistry::class, function ($app) {
             $registry = new CallableRegistry($app);
@@ -119,6 +124,11 @@ class RscKitServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/rsc.php' => config_path('rsc.php'),
             ], 'rsc-config');
+
+            // Only for `rsc.versions` = database: the table the renderer reads.
+            $this->publishesMigrations([
+                __DIR__.'/../database/migrations' => database_path('migrations'),
+            ], 'rsc-migrations');
 
             $this->commands([
                 InstallCommand::class,

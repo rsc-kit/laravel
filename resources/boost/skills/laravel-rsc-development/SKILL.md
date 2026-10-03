@@ -266,6 +266,12 @@ import { ordersCancel } from '../../server-actions.generated'
   [`team:${params.team}:repos`] })` - refreshes in every open tab, with
   nothing polling. Versions live in the cache; with several servers, use a
   store they share (`rsc.versions_store`).
+- At scale, `RSC_VERSIONS=database` (publish `rsc-migrations`, migrate)
+  keeps versions in the `rsc_versions` table and the renderer reads it
+  itself (`installVersionSource(postgresVersions(sql))` in
+  `instrumentation.ts`): watching then costs PHP no requests, and on Postgres
+  changes arrive instantly via NOTIFY.
+- Set `RSC_SIGNING_SECRET` for the renderer (not the host-call secret).
 
 ## Forms
 
