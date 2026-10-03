@@ -191,10 +191,13 @@ open is one the next request waits for — and the renderer asks again on its
 interval, a couple of seconds apart. The protocol allows either, which is
 what lets the same page run on a backend that can wait and one that cannot.
 
-**Watching for free: `RSC_VERSIONS=database`.** Answering at once means the
-renderer asks again every couple of seconds while any tab is watching - one
-small PHP request each time, whether anything changed or not. To take PHP out
-of watching altogether, keep the versions in the `rsc_versions` table:
+**What watching costs.** Answering at once means the renderer asks again about
+every two seconds while any tab is watching: one small request - a cache read
+- per renderer process, for all of its tabs together. That is the default and
+the recommendation; Laravel stays the only thing that talks to its database.
+
+**Versions in a table: `RSC_VERSIONS=database`.** For pruning on a schedule, or
+for writers outside Laravel:
 
 ```sh
 php artisan vendor:publish --tag=rsc-migrations && php artisan migrate
@@ -202,11 +205,37 @@ RSC_VERSIONS=database
 ```
 
 `Rsc::changed()` then writes one upsert per name - and on Postgres sends a
-`NOTIFY rsc_versions` - and the renderer reads the table itself
-(`installVersionSource(postgresVersions(sql))` in its `instrumentation.ts`).
-Watching costs PHP nothing, and on Postgres a change reaches the tabs at once.
-It is the same table Go and the JavaScript stores use, so a cron job or
-another service can write to it too.
+`NOTIFY rsc_versions` - and Laravel answers the renderer from the table. It is
+the same table Go and the JavaScript stores use, so a cron job or another
+service can write to it too.
+
+**Instant, with broadcasting.** If the app has Laravel's broadcasting set up
+(`php artisan install:broadcasting`) with a server that speaks the Pusher
+protocol - Reverb, Pusher, Soketi - `Rsc::changed()` can announce each change:
+
+```sh
+RSC_BROADCAST=true                      # Laravel: announce on every Rsc::changed()
+RSC_BROADCAST_URL=wss://ws.example.com  # the renderer: where to listen
+RSC_BROADCAST_KEY=your-app-key          # the renderer: the server's app key
+```
+
+The renderer subscribes to the `rsc-versions` channel and, on each
+announcement, asks `__rsc.changed` at once - so a change reaches the tabs in
+a moment, and between changes the renderer asks only every thirty seconds, as
+a safety net. The announcement (`rsc.changed`) carries nothing: the channel is
+public, so names - which may be one visitor's - never go over it, and
+Laravel still answers which moved. It is sent after the surrounding
+transaction commits.
+
+**Versions and cleanup.** A version is the time a name last changed, in
+milliseconds - one past the old value if that is larger - so it never
+repeats, and an old name can be deleted at any time: a tab still holding it
+refreshes once. Cache keys expire on their own after `rsc.versions_keep_days`
+(30). In database mode, schedule the pruning:
+
+```php
+Schedule::command('rsc:prune-versions')->daily();   // --days=N to choose the age
+```
 
 `__rsc.changed` is registered by the service provider, not discovered, and is
 left out of the manifest. The versions live in the default cache store, or

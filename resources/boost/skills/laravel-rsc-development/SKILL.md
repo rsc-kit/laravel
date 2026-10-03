@@ -290,8 +290,14 @@ Rsc::changed("team:{$team->id}:repos");
 ```
 
 - `refreshOn` is a list of names, or a function of the page's `params` and
-  `searchParams`. It runs per request, so `cookies()` works: a name for the
-  signed-in user is fine. A page can `export const refreshOn` too; a change
+  `searchParams` - given to it already awaited, so
+  `({ params }) => [\`team:${params.team}:repos\`]` is right. It runs per
+  request, so `cookies()` works: a name for the signed-in user is fine.
+- A name is a signal, not data or a permission. A refresh renders for its
+  own visitor, through their session, guards and rpc() calls, so per-user
+  data stays per user: a chat's `conversation:{id}` refreshes both people's
+  tabs, and each sees their own view. A tab can only listen for names its
+  page rendered with. Use ids in names - never emails or anything secret. A page can `export const refreshOn` too; a change
   refreshes the page.
 - Name what the data is, not where it shows: `team:{id}:repos`,
   `deploy:{id}`, `order:{id}`. Two sections on the same name both refresh.
@@ -307,12 +313,23 @@ Rsc::changed("team:{$team->id}:repos");
   (Redis, database), set with `RSC_VERSIONS_STORE` when it is not the
   default. The renderer asks PHP which moved every couple of seconds while
   any tab is watching.
-- At scale, `RSC_VERSIONS=database`: publish the migration
-  (`php artisan vendor:publish --tag=rsc-migrations`, then migrate), and in
-  the renderer's `instrumentation.ts`
-  `installVersionSource(postgresVersions(postgres(process.env.DATABASE_URL!)))`.
-  The renderer reads `rsc_versions` itself, so watching costs PHP no
-  requests, and on Postgres the NOTIFY makes changes arrive at once.
+- Keep the cache default. Watching costs one small PHP request about every
+  two seconds per renderer process, for all its tabs - not per tab - and
+  Laravel stays the only thing that talks to its database.
+- `RSC_VERSIONS=database` (publish `rsc-migrations`, migrate) is for pruning
+  versions on a schedule, or for writers outside Laravel. Laravel still
+  answers the renderer from the table.
+- For instant updates, use broadcasting, not the database: with Laravel's
+  broadcasting set up (Reverb, Pusher, Soketi), set `RSC_BROADCAST=true`, and
+  give the renderer `RSC_BROADCAST_URL` and `RSC_BROADCAST_KEY`. Each
+  `Rsc::changed()` announces a change (no names on the channel), the
+  renderer asks Laravel at once, and otherwise asks only every 30 seconds.
+- Do not have the renderer read Laravel's database: it would need the
+  credentials, a driver and the table's layout.
+- With `RSC_VERSIONS=database`, schedule `rsc:prune-versions` daily: a row
+  is kept for every name that ever changed. Deleting is always safe (a
+  version is a time and never repeats). Cache keys expire on their own
+  after `RSC_VERSIONS_KEEP_DAYS` (30).
 - In development the browser console lists what each region watches. A
   region missing there rendered no names; the renderer's log says why.
   Hidden tabs stop watching and catch up when shown.
@@ -360,9 +377,16 @@ export function NewOrder() {
   string, the same on every instance. It is not the host-call secret and
   does not fall back to it. In production, an app that uses `refreshOn`
   without it refuses to serve.
+- `RSC_STREAM_KEEPALIVE_MS` (the renderer, default 8000): set it below the
+  idle timeout of anything in front that drops quiet connections, or open
+  tabs keep reconnecting.
+- `RSC_BROADCAST` (Laravel), `RSC_BROADCAST_URL` and `RSC_BROADCAST_KEY` (the
+  renderer): announce each change on Laravel's broadcasting so tabs hear it
+  at once. `RSC_BROADCAST_CHANNEL` renames the channel.
 - `RSC_VERSIONS` (`cache` or `database`), `RSC_VERSIONS_STORE`,
   `RSC_VERSIONS_TABLE`, `RSC_VERSIONS_CONNECTION`: where `Rsc::changed()`
-  keeps versions.
+  keeps versions. `RSC_VERSIONS_KEEP_DAYS` (30): how long an unchanged name
+  is kept.
 
 ## Commands
 
@@ -370,6 +394,7 @@ export function NewOrder() {
 php artisan rsc:install          # config, both secrets, and the JavaScript half
 php artisan make:rsc-action ...  # an action, or --rpc for an rpc() class
 php artisan rsc:host-manifest    # rsc-host.json; Vite runs it for you
+php artisan rsc:prune-versions   # delete refreshOn versions nobody changed in 30 days
 php artisan optimize             # includes rsc:cache, the discovered callables
 npm run dev                      # Vite is the renderer
 npm run build                    # .output/

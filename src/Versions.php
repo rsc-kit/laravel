@@ -6,6 +6,7 @@ use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use RscKit\Events\VersionsChanged;
 
 /**
  * Versions, in the app's cache.
@@ -46,7 +47,27 @@ class Versions
         private readonly string $driver = 'cache',
         private readonly string $table = 'rsc_versions',
         private readonly ?string $connection = null,
+        private readonly int $keepDays = 30,
+        private readonly bool $broadcast = false,
+        private readonly string $channel = 'rsc-versions',
     ) {}
+
+    /**
+     * The version a name moves to: the larger of one past where it was and
+     * the current time in milliseconds.
+     *
+     * A counter repeats once its row or key is gone: a name starts again from
+     * 0 and climbs back to a value a hidden tab still holds, and that tab
+     * misses the change. A time never comes round again, so old names can be
+     * deleted - or left to expire - at any moment, and a tab still holding
+     * one refreshes once. It is also when the name last changed, which is
+     * all cleanup needs. The same rule as rsc-kit's nextVersion and Go's
+     * NextVersion.
+     */
+    public static function next(int $current = 0): int
+    {
+        return max($current + 1, (int) floor(microtime(true) * 1000));
+    }
 
     private function db(): Connection
     {
@@ -69,17 +90,32 @@ class Versions
 
         if ($this->driver === 'database') {
             $this->changedInTable($names);
-
-            return;
+        } else {
+            $this->changedInCache($names);
         }
 
+        // Wake the renderers listening on the broadcast, after the write -
+        // and, inside a transaction, after it commits.
+        if ($this->broadcast) {
+            event(new VersionsChanged($this->channel));
+        }
+    }
+
+    /** @param  list<string>  $names */
+    private function changedInCache(array $names): void
+    {
         foreach ($names as $name) {
             $key = self::PREFIX.$name;
 
-            // The first change makes the key, forever; the rest count.
-            if (! $this->cache()->add($key, 1)) {
-                $this->cache()->increment($key);
-            }
+            // Read, then written with an expiry, so a name nobody changes
+            // leaves the cache on its own. Not atomic: two changes at once
+            // may write one version between them, which is still a change -
+            // watchers only compare.
+            $this->cache()->put(
+                $key,
+                self::next((int) $this->cache()->get($key, 0)),
+                now()->addDays($this->keepDays),
+            );
         }
     }
 
@@ -93,16 +129,42 @@ class Versions
     {
         $db = $this->db();
         $version = $db->getQueryGrammar()->wrap($this->table.'.version');
+        $now = self::next();
 
+        // next(), in SQL every dialect has: CASE rather than GREATEST, which
+        // SQLite spells MAX. $now is an integer this process made.
         $db->table($this->table)->upsert(
-            array_map(fn (string $name) => ['name' => $name, 'version' => 1], $names),
+            array_map(fn (string $name) => ['name' => $name, 'version' => $now], $names),
             ['name'],
-            ['version' => $db->raw($version.' + 1')],
+            ['version' => $db->raw("CASE WHEN {$version} + 1 > {$now} THEN {$version} + 1 ELSE {$now} END")],
         );
 
         if ($db->getDriverName() === 'pgsql') {
             $db->statement('NOTIFY '.self::CHANNEL);
         }
+    }
+
+    /**
+     * Delete every name not changed in $days (the configured keep days by
+     * default), and answer how many. The table only: cache keys expire on
+     * their own. Always safe - a tab still holding a pruned name sees it
+     * differ and refreshes once.
+     */
+    public function prune(?int $days = null): int
+    {
+        if ($this->driver !== 'database') {
+            return 0;
+        }
+
+        $cutoff = (int) floor((microtime(true) - ($days ?? $this->keepDays) * 86400) * 1000);
+
+        return $this->db()->table($this->table)->where('version', '<', $cutoff)->delete();
+    }
+
+    /** Whether versions are in the table, which pruning is for. */
+    public function inTable(): bool
+    {
+        return $this->driver === 'database';
     }
 
     /**

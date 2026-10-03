@@ -77,18 +77,38 @@ return [
     /*
      * Where Rsc::changed() keeps versions for refreshOn.
      *
-     * 'cache' (the default): the app's cache. The renderer asks PHP which
-     * versions moved, about every two seconds while any tab is watching - one
-     * small request each time, since PHP cannot hold the question open.
+     * 'cache' (the default, and the recommendation): the app's cache. The
+     * renderer asks PHP which versions moved about every two seconds while any
+     * tab is watching - one small request per renderer process, however many
+     * tabs, since PHP cannot hold the question open.
      *
      * 'database': the rsc_versions table (php artisan vendor:publish
-     * --tag=rsc-migrations). The renderer reads it itself with
-     * postgresVersions or sqlVersions, so watching costs PHP nothing, and on
-     * Postgres a NOTIFY reaches it the moment a version moves.
+     * --tag=rsc-migrations), for pruning on a schedule or for writers outside
+     * Laravel - a Go service, another language's worker. Laravel still
+     * answers the renderer from it. On Postgres each change also sends a
+     * NOTIFY, for a renderer that reads the table itself (see PROTOCOL.md).
      */
     'versions' => env('RSC_VERSIONS', 'cache'),
     'versions_table' => env('RSC_VERSIONS_TABLE', 'rsc_versions'),
     'versions_connection' => env('RSC_VERSIONS_CONNECTION'),
+
+    /*
+     * How long a name nobody changes is kept: cache keys expire after it, and
+     * `php artisan rsc:prune-versions` deletes table rows older than it.
+     * Deleting is always safe; a tab still holding the name refreshes once.
+     */
+    'versions_keep_days' => (int) env('RSC_VERSIONS_KEEP_DAYS', 30),
+
+    /*
+     * Broadcast "a version moved" on every Rsc::changed(), so the renderer
+     * asks the moment something changes rather than every two seconds. Needs
+     * Laravel's broadcasting set up (php artisan install:broadcasting) with a
+     * Pusher-protocol server - Reverb, Pusher, Soketi - and the renderer told
+     * where it is: RSC_BROADCAST_URL and RSC_BROADCAST_KEY. The event carries
+     * no names, so the public channel reveals nothing.
+     */
+    'broadcast' => (bool) env('RSC_BROADCAST', false),
+    'broadcast_channel' => env('RSC_BROADCAST_CHANNEL', 'rsc-versions'),
 
     /*
      * For 'cache': a store every server shares; null is the default store.

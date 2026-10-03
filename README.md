@@ -23,7 +23,7 @@ composer require rsc-kit/laravel
 - **Partial prerendering** — a static shell at build time, the rest streamed
 - **Parallel routes and interception** — `@folder` slots, `(.)` modals
 - **Typed routes** — the build writes the urls it found, so a link to a page that does not exist fails the typecheck
-- **Refresh on change** — a section names what it refreshes on; `Rsc::changed("team:$id:repos")` from a webhook or a job refreshes it in every open tab, with nothing polling
+- **Refresh on change** — a section names what it refreshes on; `Rsc::changed("team:$id:repos")` from a webhook or a job refreshes it in every open tab, with nothing polling. Instant with Laravel's broadcasting (Reverb, Pusher, Soketi).
 
 ## How it fits together
 
@@ -162,6 +162,7 @@ points at the line of PHP that threw. Never in production.
 | command | what it does |
 | --- | --- |
 | `rsc:install` | publishes `config/rsc.php`, generates both secrets, runs `rsc-kit init` for the JavaScript half (`--skip-js` for the PHP half only) |
+| `rsc:prune-versions` | deletes `refreshOn` versions nobody changed in `rsc.versions_keep_days` (database mode); schedule it daily |
 | `rsc:host-manifest` | writes `rsc-host.json` — `actions`, `functions`, and their `types` and `defs` from the PHP signatures. `vite.config.ts` runs it as dev and every build start (`rscKit({ hostManifest })`) |
 | `make:rsc-action` | a server action under `app/Rsc/Actions`, or with `--rpc` a class for `rpc()` under `app/Rsc`; `--method`, `--auth`, `--can`, `--middleware`, `--revalidate`. Writes the manifest too |
 | `rsc:cache` / `rsc:clear` | cache the discovered callables for production; run by `optimize` and `optimize:clear` |
