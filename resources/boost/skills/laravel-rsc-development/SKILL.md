@@ -307,12 +307,15 @@ Rsc::changed("team:{$team->id}:repos");
   (Redis, database), set with `RSC_VERSIONS_STORE` when it is not the
   default. The renderer asks PHP which moved every couple of seconds while
   any tab is watching.
-- At scale, `RSC_VERSIONS=database`: publish the migration
-  (`php artisan vendor:publish --tag=rsc-migrations`, then migrate), and in
-  the renderer's `instrumentation.ts`
-  `installVersionSource(postgresVersions(postgres(process.env.DATABASE_URL!)))`.
-  The renderer reads `rsc_versions` itself, so watching costs PHP no
-  requests, and on Postgres the NOTIFY makes changes arrive at once.
+- Keep the cache default. Watching costs one small PHP request about every
+  two seconds per renderer process, for all its tabs - not per tab - and
+  Laravel stays the only thing that talks to its database.
+- `RSC_VERSIONS=database` (publish `rsc-migrations`, migrate) is for pruning
+  versions on a schedule, or for writers outside Laravel. Laravel still
+  answers the renderer from the table.
+- Do not have the renderer read the database to save those requests unless
+  two seconds is genuinely too slow: it then needs the credentials, a
+  driver, and the table's layout.
 - With `RSC_VERSIONS=database`, schedule `rsc:prune-versions` daily: a row
   is kept for every name that ever changed. Deleting is always safe (a
   version is a time and never repeats). Cache keys expire on their own

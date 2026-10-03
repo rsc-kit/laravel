@@ -191,10 +191,13 @@ open is one the next request waits for — and the renderer asks again on its
 interval, a couple of seconds apart. The protocol allows either, which is
 what lets the same page run on a backend that can wait and one that cannot.
 
-**Watching for free: `RSC_VERSIONS=database`.** Answering at once means the
-renderer asks again every couple of seconds while any tab is watching - one
-small PHP request each time, whether anything changed or not. To take PHP out
-of watching altogether, keep the versions in the `rsc_versions` table:
+**What watching costs.** Answering at once means the renderer asks again about
+every two seconds while any tab is watching: one small request - a cache read
+- per renderer process, for all of its tabs together. That is the default and
+the recommendation; Laravel stays the only thing that talks to its database.
+
+**Versions in a table: `RSC_VERSIONS=database`.** For pruning on a schedule, or
+for writers outside Laravel:
 
 ```sh
 php artisan vendor:publish --tag=rsc-migrations && php artisan migrate
@@ -202,11 +205,14 @@ RSC_VERSIONS=database
 ```
 
 `Rsc::changed()` then writes one upsert per name - and on Postgres sends a
-`NOTIFY rsc_versions` - and the renderer reads the table itself
-(`installVersionSource(postgresVersions(sql))` in its `instrumentation.ts`).
-Watching costs PHP nothing, and on Postgres a change reaches the tabs at once.
-It is the same table Go and the JavaScript stores use, so a cron job or
-another service can write to it too.
+`NOTIFY rsc_versions` - and Laravel answers the renderer from the table. It is
+the same table Go and the JavaScript stores use, so a cron job or another
+service can write to it too.
+
+A renderer *can* read that table itself and listen for the NOTIFY, so changes
+arrive at once and PHP answers nothing for watching. It is a trade, not an
+upgrade: the renderer then holds the database credentials and a driver, and
+depends on the table's layout. Reach for it only when two seconds is too slow.
 
 **Versions and cleanup.** A version is the time a name last changed, in
 milliseconds - one past the old value if that is larger - so it never

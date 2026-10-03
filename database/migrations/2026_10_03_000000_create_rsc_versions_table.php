@@ -5,9 +5,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Where Rsc::changed() keeps versions when `rsc.versions` is `database`: the
- * table the renderer can read for itself, so watching costs PHP nothing. The
- * same table and columns Go and the JavaScript stores use.
+ * Where Rsc::changed() keeps versions when `rsc.versions` is `database`. The
+ * same table and columns Go and the JavaScript stores use, so something
+ * outside Laravel can write to it too.
  */
 return new class extends Migration
 {
