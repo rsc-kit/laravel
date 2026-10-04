@@ -290,6 +290,11 @@ import { ordersCancel } from '../../server-actions.generated'
 - A redirect from an action renders the destination fresh, so a cookie or
   membership the action changed is already reflected. No revalidate needed
   before it.
+- An action can log someone in: `Auth::login()` (or any `Cookie::queue`)
+  sets the session cookie on the action's answer, and the renderer puts it
+  on the page's response. Redirect after it as usual. A callable read inside
+  a page cannot - its response headers have gone - so cookies are set from
+  actions.
 - A change that did not come from the tab - a webhook, a job, another user -
   is `Rsc::changed()`, below.
 
@@ -327,8 +332,24 @@ Rsc::changed("team:{$team->id}:repos");
   tabs, and each sees their own view. A tab can only listen for names its
   page rendered with. Use ids in names - never emails or anything secret. A page can `export const refreshOn` too; a change
   refreshes the page.
+- A page's own `refreshOn` is typed from its url schema, so `params` arrive
+  parsed - no casts:
+
+  ```tsx
+  import type { PageRefreshOn } from '@rsc-kit/core/section'
+
+  export const params = z.object({ team: z.string() })
+  export const refreshOn: PageRefreshOn<typeof params> = ({ params }) => [`team:${params.team}`]
+  ```
+
+  `export const`, `export function` and a list - `export { refreshOn } from
+  './names'` - all count. `export * from` does not: name it in a list.
 - Name what the data is, not where it shows: `team:{id}:repos`,
   `deploy:{id}`, `order:{id}`. Two sections on the same name both refresh.
+- A change to a child is a change to its parent's list. Say both where the
+  write happens - `Rsc::changed("app:{$app->id}", "team:{$app->team_id}:apps")`
+  - and let each region name only what it shows. Never make a list watch a
+  name per row: it misses a row added after it rendered.
 - Call `Rsc::changed()` after the write is committed - in a transaction,
   `DB::afterCommit(fn () => Rsc::changed(...))` - or a tab can refresh
   before the data is there to read.
@@ -359,7 +380,9 @@ Rsc::changed("team:{$team->id}:repos");
   version is a time and never repeats). Cache keys expire on their own
   after `RSC_VERSIONS_KEEP_DAYS` (30).
 - In development the browser console lists what each region watches. A
-  region missing there rendered no names; the renderer's log says why.
+  region missing there rendered no names; the renderer's log says why - a
+  `refreshOn` that gave no names at all is said too, usually a param read
+  under the wrong name.
   Hidden tabs stop watching and catch up when shown.
 
 ## Forms
@@ -460,7 +483,8 @@ const app = await createTestApp({
 ```
 
 `hostReply` also has `unauthorized()`, `redirect(to)`, `refuse(status,
-message)`, `invalid(errors)` and `revalidating(result, ...regions)`.
+message)`, `invalid(errors)`, `revalidating(result, ...regions)` and
+`settingCookies(result, ...cookies)`.
 
 For `refreshOn`, `testChanges()` answers the renderer's version asks the way
 Laravel does, and its `changed()` stands in for `Rsc::changed()`:
@@ -473,6 +497,17 @@ const app = await createTestApp({ host: { ...changes.host, 'Repos.list': () => r
 
 changes.changed('team:1:repos')   // what the webhook would say
 ```
+
+`app.watched(path)` says what each region of a page refreshes on, for that
+url - `page` for the page's own, a section's name for each section's - so a
+test checks the names without reading the payload:
+
+```ts
+expect(await app.watched('/t/acme')).toEqual({ page: ['team:acme'], repos: ['team:acme:repos'] })
+```
+
+`hostReply.settingCookies(result, 'laravel_session=...')` stands in for a
+callable that logs someone in.
 
 ## Production
 
