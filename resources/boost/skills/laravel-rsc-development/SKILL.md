@@ -342,6 +342,8 @@ Rsc::changed("team:{$team->id}:repos");
   export const refreshOn: PageRefreshOn<typeof params> = ({ params }) => [`team:${params.team}`]
   ```
 
+  Without a schema, name the route's pattern - `PageRefreshOn<'/t/[team]'>` -
+  and each param is a string; a misspelt one fails the typecheck.
   `export const`, `export function` and a list - `export { refreshOn } from
   './names'` - all count. `export * from` does not: name it in a list.
 - Name what the data is, not where it shows: `team:{id}:repos`,
