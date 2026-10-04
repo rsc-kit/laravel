@@ -356,6 +356,23 @@ it('hands the renderer the visitor Laravel resolved, not the one they claimed', 
 });
 
 /**
+ * A directory of the test's own for file sessions. Never the temp directory
+ * itself: Laravel's session lottery sweeps session.files recursively on a
+ * random 2% of requests, and in the shared temp directory that walk reaches
+ * other services' private folders and dies on their permissions.
+ */
+function sessionDirectory(): string
+{
+    $directory = sys_get_temp_dir().'/rsc-sessions-'.getmypid();
+
+    if (! is_dir($directory)) {
+        mkdir($directory, 0700, true);
+    }
+
+    return $directory;
+}
+
+/**
  * Every Set-Cookie the browser would be sent, in order.
  *
  * Read the way the response writes them: the renderer's own lines after
@@ -378,7 +395,7 @@ it('lets the renderer\'s cookies reach the browser as the renderer sent them', f
     // proxy's own session cookie, a login made during the render was
     // replaced by the session it had just migrated away from.
     config()->set('session.driver', 'file');
-    config()->set('session.files', sys_get_temp_dir());
+    config()->set('session.files', sessionDirectory());
     file_put_contents(config('rsc.hot_file'), fakeRenderer());
 
     $response = $this->get('/sets-cookies');
@@ -399,7 +416,7 @@ it('still sends the proxy\'s own cookies when the renderer set none of that name
     // post back with - are still the visitor's when the renderer said nothing
     // about them.
     config()->set('session.driver', 'file');
-    config()->set('session.files', sys_get_temp_dir());
+    config()->set('session.files', sessionDirectory());
     file_put_contents(config('rsc.hot_file'), fakeRenderer());
 
     $cookies = implode("\n", sentCookies($this->get('/sets-nothing')->assertOk()));
