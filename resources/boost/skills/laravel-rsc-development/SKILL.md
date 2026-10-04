@@ -21,6 +21,34 @@ Activate this skill when:
 - Deciding where a Suspense boundary goes, or why the build refused a route
 - Setting up development, tests or a production deploy
 
+## Rules
+
+Follow these on every change; each is explained below.
+
+- **A change is not done without its test.** Pest for the callables and actions
+  under `app/Rsc` (their refusals included); `createTestApp` for pages. Run
+  `php artisan test` and the JavaScript typecheck before saying it is done.
+- **A new setting goes in `config/` and `.env.example`.** Read it with
+  `config()`, never `env()` outside a config file - Laravel's rule, kept here.
+- **Pages paint at once.** A page is synchronous; each `rpc()` read is an async
+  component under its own `<Suspense>`. Not `loading.tsx` to hide a slow read.
+- **Server components call `rpc()` directly** - never `fetch` the app's own
+  Laravel routes from them.
+- **Live data:** `refreshOn` on the section and `Rsc::changed()` where the data
+  changes, after the transaction commits. `usePolling` only for data nothing
+  can announce.
+- **Authorisation lives in the callable** - `#[Authenticated]`, `#[Can]`, a
+  policy - never only in the component that shows the button.
+- **Links and redirects are typed:** ``<Link href={`/orders/${id}`}>``, a
+  template literal, so a renamed page fails the typecheck.
+- **Metadata is `export const metadata`**, never tags in a page's markup.
+- **Never edit generated files:** `resources/js/server-actions.generated.ts`,
+  `rsc-host.json`, `.rsc-kit/`. Change the PHP they are generated from.
+- **Secrets are generated, never invented or committed:** `php artisan
+  rsc:install` writes `RSC_HOST_CALL_SECRET` and `RSC_SIGNING_SECRET`.
+- **Ask before guessing:** the `rsc-kit` MCP server's `rules` and `how_to`
+  answer for the installed version.
+
 ## The Model
 
 The renderer is the front door: a JavaScript process built by Vite with
