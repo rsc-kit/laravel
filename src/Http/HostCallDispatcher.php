@@ -137,7 +137,7 @@ class HostCallDispatcher
             // field for them.
             return [
                 'status' => 200,
-                'reply' => ['redirect' => $e->getLocation(), 'redirectStatus' => $e->getStatus()],
+                'reply' => ['redirect' => $this->forTheVisitor($e->getLocation()), 'redirectStatus' => $e->getStatus()],
             ];
         } catch (HttpExceptionInterface $e) {
             // A middleware that aborted with a status meant that status.
@@ -196,6 +196,35 @@ class HostCallDispatcher
      * @param  mixed  $calls  what the body carried under "calls"
      * @return array{status: int, reply: array<string, mixed>}
      */
+    /**
+     * A redirect to this request's own origin, as a path.
+     *
+     * redirect('/login') builds an absolute url from the request it is
+     * answering - and this request is the renderer's host call, so its origin
+     * is wherever the renderer reaches Laravel: an internal address the
+     * visitor cannot open. As a path it resolves against the page the visitor
+     * is on. A redirect to anywhere else - another site, an identity
+     * provider - is left as it was.
+     */
+    private function forTheVisitor(string $location): string
+    {
+        $parts = parse_url($location);
+
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
+            return $location;
+        }
+
+        $origin = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
+
+        if (strcasecmp($origin, request()->getSchemeAndHttpHost()) !== 0) {
+            return $location;
+        }
+
+        return ($parts['path'] ?? '/')
+            .(isset($parts['query']) ? '?'.$parts['query'] : '')
+            .(isset($parts['fragment']) ? '#'.$parts['fragment'] : '');
+    }
+
     private function dispatchBatch(mixed $calls): array
     {
         if ($refusal = $this->malformedBatch($calls)) {
