@@ -254,6 +254,19 @@ describe('what a failure means', function () {
 
         expect($answer['reply']['redirectStatus'])->toBe(303);
     });
+
+    it('sends a redirect to its own origin as a path, so it resolves against the visitor\'s page', function () {
+        // redirect('/login') builds its url from the request it answers: the
+        // renderer's host call, at whatever address the renderer reaches
+        // Laravel by - not one the visitor can open.
+        $dispatcher = dispatcherWith([
+            'Session.start' => fn () => throw new RscRedirectException(request()->getSchemeAndHttpHost().'/login?next=%2Fbilling#top'),
+            'Session.sso' => fn () => throw new RscRedirectException('https://id.example.com/authorize?client=1'),
+        ]);
+
+        expect($dispatcher->dispatch(['function' => 'Session.start', 'args' => []])['reply']['redirect'])->toBe('/login?next=%2Fbilling#top')
+            ->and($dispatcher->dispatch(['function' => 'Session.sso', 'args' => []])['reply']['redirect'])->toBe('https://id.example.com/authorize?client=1');
+    });
 });
 
 describe('revalidation', function () {

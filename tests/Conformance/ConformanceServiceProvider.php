@@ -8,6 +8,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\ValidationException;
 use RscKit\CallableRegistry;
@@ -29,6 +30,7 @@ class ConformanceServiceProvider extends ServiceProvider
     {
         $router->aliasMiddleware('conformance-allow', fn (Request $request, Closure $next) => $next($request));
         $router->aliasMiddleware('conformance-deny', fn () => abort(403, 'Not for you.'));
+        $router->aliasMiddleware('conformance-redirect', fn () => redirect('/conformance-login'));
 
         $registry->register('Conformance.echo', fn (mixed $value): mixed => $value);
         $registry->register('Conformance.emptyList', fn (): array => []);
@@ -52,5 +54,16 @@ class ConformanceServiceProvider extends ServiceProvider
             return 'ok';
         });
         $registry->register('Conformance.authorization', fn (): ?string => request()->header('Authorization'));
+        $registry->register('Conformance.cookie', fn (): ?string => request()->header('Cookie'));
+        $registry->register('Conformance.login', function (): string {
+            Cookie::queue('conformance_login', '1');
+
+            return 'ok';
+        });
+        $registry->register('Conformance.double', fn (int $n): int => $n * 2);
+        $registry->register('Conformance.invalidNested', fn () => throw ValidationException::withMessages([
+            'address.city' => 'The city is required.',
+            '' => 'The address could not be checked.',
+        ]));
     }
 }
