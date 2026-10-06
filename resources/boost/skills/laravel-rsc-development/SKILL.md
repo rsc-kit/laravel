@@ -221,14 +221,16 @@ class Orders
 | --- | --- |
 | `AuthenticationException` | 401 |
 | `AuthorizationException` | 403 |
-| `ValidationException`, or a FormRequest that fails | `validationErrors` on the form |
+| `ValidationException`, or a FormRequest that fails | `validationErrors` on the form in an action; 422 from a read in a page |
 | `abort(404)` | the app's `not-found.tsx` |
 | a middleware `abort(429)` | its own status |
 | `RscRedirectException` | a redirect the browser follows |
 
-A status only reaches the response when it is decided before anything is
-sent. A 404 from a read inside a slot shows the not-found page, but the
-response may already be a 200. Decide whether a page exists in
+A status only reaches a person's response when it is decided before anything
+is sent. A 404 from a read inside a slot shows the not-found page, the response
+stays 200, and the page ends with a `noindex` tag. A search engine or
+link-preview crawler is answered once the page has finished, so it gets the
+real 404. When it must be a 404 for everyone, decide whether the page exists in
 `middleware.ts`.
 
 ## Route Middleware
