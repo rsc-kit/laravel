@@ -224,7 +224,13 @@ class Orders
 | `ValidationException`, or a FormRequest that fails | `validationErrors` on the form in an action; 422 from a read in a page |
 | `abort(404)` | the app's `not-found.tsx` |
 | a middleware `abort(429)` | its own status |
+| `Rsc::refuse('Still in use', ['blockers' => $links])` | the message as `formError`, the data as the action's `result.refusal` (checked by its `.refusal(schema)`), 409 |
 | `RscRedirectException` | a redirect the browser follows |
+
+Refuse with data when the input is fine and the answer is still no, and the
+page needs more than a sentence - what is blocking a delete, as links. Do not
+encode the blockers into the message, and do not rebuild them from the page's
+own list: the refusal knows what is blocking it at the moment of the write.
 
 A status only reaches a person's response when it is decided before anything
 is sent. A 404 from a read inside a slot shows the not-found page, the response
