@@ -40,6 +40,9 @@ class ConformanceServiceProvider extends ServiceProvider
         $registry->register('Conformance.unauthorized', fn () => throw new AuthorizationException);
         $registry->register('Conformance.notFound', fn () => abort(404));
         $registry->register('Conformance.refuse', fn () => abort(429, 'Slow down.'));
+        $registry->register('Conformance.refuseWithData', fn () => Rsc::refuse('Still in use', [
+            'blockers' => [['id' => 7, 'href' => '/orders/7']],
+        ]));
         $registry->register('Conformance.invalid', fn () => throw ValidationException::withMessages(['name' => 'The name field is required.']));
         $registry->register('Conformance.redirect', fn () => throw new RscRedirectException('/login'));
         $registry->register('Conformance.revalidate', function (): string {

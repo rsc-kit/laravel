@@ -9,6 +9,7 @@ use Illuminate\Validation\ValidationException;
 use RscKit\CallableRegistry;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Revalidation;
+use RscKit\Rsc;
 use RscKit\RscRedirectException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -169,6 +170,36 @@ describe('what a failure means', function () {
         foreach (['a', 'b', 'c', 'd', 'e'] as $name) {
             $dispatcher->dispatch(['function' => $name, 'args' => []]);
         }
+
+        Exceptions::assertNothingReported();
+    });
+
+    it('answers Rsc::refuse() with its message, its status and its data, and reports nothing', function () {
+        Exceptions::fake();
+
+        $dispatcher = dispatcherWith([
+            'Projects.delete' => fn () => Rsc::refuse('Still in use', [
+                'blockers' => collect([['id' => 7, 'href' => '/orders/7']]),
+            ]),
+            'Projects.archive' => fn () => Rsc::refuse('Not now', status: 423),
+        ]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Projects.delete', 'args' => []]);
+
+        // As it goes on the wire: a collection inside the data is encoded as
+        // the list it holds, the way a result's is.
+        expect($answer['status'])->toBe(409)
+            ->and(json_encode($answer['reply']))->toBe(json_encode([
+                'error' => 'Still in use',
+                'refusalStatus' => 409,
+                'refusalData' => ['blockers' => [['id' => 7, 'href' => '/orders/7']]],
+            ]));
+
+        // Without data, the refusal an abort always was.
+        expect($dispatcher->dispatch(['function' => 'Projects.archive', 'args' => []]))->toBe([
+            'status' => 423,
+            'reply' => ['error' => 'Not now', 'refusalStatus' => 423],
+        ]);
 
         Exceptions::assertNothingReported();
     });

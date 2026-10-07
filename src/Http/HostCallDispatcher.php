@@ -12,6 +12,7 @@ use JsonSerializable;
 use RscKit\CallableRegistry;
 use RscKit\Revalidation;
 use RscKit\RscRedirectException;
+use RscKit\RscRefusalException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 /**
@@ -139,6 +140,16 @@ class HostCallDispatcher
                 'status' => 200,
                 'reply' => ['redirect' => $this->forTheVisitor($e->getLocation()), 'redirectStatus' => $e->getStatus()],
             ];
+        } catch (RscRefusalException $e) {
+            // Rsc::refuse(): an answer, never reported, with its data beside
+            // the message. Without data it is the refusal it always was.
+            $reply = ['error' => $e->getMessage() ?: 'Refused.', 'refusalStatus' => $e->getStatusCode()];
+
+            if ($e->getData() !== null) {
+                $reply['refusalData'] = $this->jsonReady($e->getData());
+            }
+
+            return ['status' => $e->getStatusCode(), 'reply' => $reply];
         } catch (HttpExceptionInterface $e) {
             // A middleware that aborted with a status meant that status.
             // throttle answers 429, a policy 403, a signed-url check 403 — and
