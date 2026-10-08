@@ -149,8 +149,14 @@ as itself rather than as a broken page:
 | `AuthenticationException` | 401, the engine's authentication error |
 | `AuthorizationException` | 403 |
 | `ValidationException` | 422, each message under its input on the form that submitted |
-| a middleware `abort()` | its own status — throttle's 429 stays a 429 |
+| `abort(404)` | the app's `not-found.tsx`, a real 404 |
+| a middleware `abort(429, 'Slow down')` | its own status — throttle's 429 stays a 429 |
+| `Rsc::refuse('Still in use', ['blockers' => $links])` | the message and the data, 409 by default |
 | `RscRedirectException` | a redirect the browser performs |
+
+An action shows an `abort()`'s message to the visitor as it is written, so give
+it one: `abort(429, 'Slow down')`. Without one the form says "Refused.". Only a
+failure, below, is replaced by the app's generic message.
 
 Anything else is a failure: reported to Laravel's log and answered 500. With
 `app.debug` on, the answer also carries the exception's class, message and

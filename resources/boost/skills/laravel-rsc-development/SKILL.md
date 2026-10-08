@@ -222,10 +222,18 @@ class Orders
 | `AuthenticationException` | 401 |
 | `AuthorizationException` | 403 |
 | `ValidationException`, or a FormRequest that fails | `validationErrors` on the form in an action; 422 from a read in a page |
-| `abort(404)` | the app's `not-found.tsx` |
-| a middleware `abort(429)` | its own status |
+| `abort(404)` in a read | the app's `not-found.tsx`; in an action, the message as `formError` |
+| a middleware `abort(429, 'Slow down')` | its own status; an action shows the message as `formError` |
 | `Rsc::refuse('Still in use', ['blockers' => $links])` | the message as `formError`, the data as the action's `result.refusal` (checked by its `.refusal(schema)`), 409 |
 | `RscRedirectException` | a redirect the browser follows |
+
+Whatever the backend turns a call down with reaches an action as its message:
+`abort(429, 'Slow down')`, a 403, a 404, `Rsc::refuse()` with or without data.
+Write the message for the visitor - without one it reads "Refused." - and do
+not unwrap it in `onError`: only a real failure gets there, and it is replaced
+by the app's generic message on purpose, so a query's SQL never reaches a form.
+A read in a page answers the status itself, as above; `fetchQuery` rejects with
+the message, `.status` and the refusal's `.refusal`.
 
 Refuse with data when the input is fine and the answer is still no, and the
 page needs more than a sentence - what is blocking a delete, as links. Do not
