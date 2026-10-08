@@ -36,6 +36,17 @@ endpoint's contract, and the middleware runner. Rendering is the engine's, and
 its tests live in `~/Herd/rsc-kit` — a rendering regression cannot be caught
 from here, because nothing here renders.
 
+## The Boost Skill Is Part of the Engine's Change
+
+`resources/boost/skills/laravel-rsc-development/SKILL.md` is what an agent reads
+in an app built on this package, and it describes the engine's behaviour from
+another repository. When a change in `rsc-kit` alters what an app author can
+observe or must do, the skill says so here - in a PR **merged after the release
+that carries it**, since an agent follows a skill to an import that does not
+exist yet - and `tests/Unit/BoostSkillTest.php` gets a line for it. The engine's
+side of the same list is `packages/mcp/tests/coverage.test.ts`, and the rule is
+in `~/Herd/rsc-kit/CLAUDE.md`.
+
 ## Development Setup
 
 - Package source: `/Users/ramonmalcolm/Herd/lara-bun`

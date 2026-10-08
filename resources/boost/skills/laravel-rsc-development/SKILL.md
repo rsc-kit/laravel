@@ -224,7 +224,7 @@ class Orders
 | `ValidationException`, or a FormRequest that fails | `validationErrors` on the form in an action; 422 from a read in a page |
 | `abort(404)` in a read | the app's `not-found.tsx`; in an action, the message as `formError` |
 | a middleware `abort(429, 'Slow down')` | its own status; an action shows the message as `formError` |
-| `Rsc::refuse('Still in use', ['blockers' => $links])` | the message as `formError`, the data as the action's `result.refusal` (checked by its `.refusal(schema)`), 409 |
+| `Rsc::refuse('Still in use', ['blockers' => $links])` | the message as `formError`; the data as `result.refusal` only in an action built on `createActionClient()` with `.refusal(schema)`, 409 |
 | `RscRedirectException` | a redirect the browser follows |
 
 Whatever the backend turns a call down with reaches an action as its message:
@@ -235,14 +235,27 @@ by the app's generic message on purpose, so a query's SQL never reaches a form.
 A read in a page answers the status itself, as above; `fetchQuery` rejects with
 the message, `.status` and the refusal's `.refusal`.
 
+**Through a generated stub**, `<Form action={ordersDelete}>`, only the message
+arrives, as `formError`. A plain function has no `.refusal(schema)` to check
+data against, so the data is left out and the renderer's log says so. To act on
+it, call `rpc()` from an action built on `createActionClient()` and declare
+`.refusal(schema)`.
+
 Refuse with data when the input is fine and the answer is still no, and the
 page needs more than a sentence - what is blocking a delete, as links. Do not
 encode the blockers into the message, and do not rebuild them from the page's
 own list: the refusal knows what is blocking it at the moment of the write.
 
 A status only reaches a person's response when it is decided before anything
-is sent. A 404 from a read inside a slot shows the not-found page, the response
-stays 200, and the page ends with a `noindex` tag. A search engine or
+is sent. A 404 from a read inside a slot shows `not-found.tsx` where the page
+was - the layouts above it stay and the url is unchanged - the response stays
+200, and the page ends with a `noindex` tag. An `error.tsx` never sees it, and
+nothing should check for it.
+
+A `not-found.tsx` beside a layout answers `notFound()` from every page under it,
+inside that layout - the nearest one above the page wins, like `error.tsx` - so
+`resources/js/app/(shop)/not-found.tsx` keeps the shop's header on a missing
+product. A url no route owns is answered by the root one only. A search engine or
 link-preview crawler is answered once the page has finished, so it gets the
 real 404. When it must be a 404 for everyone, decide whether the page exists in
 `middleware.ts`.
@@ -261,6 +274,11 @@ export const middleware = ['auth', 'verified', 'can:update,post']
 It fails closed: only a pipeline that reaches the end lets the page render. A
 middleware that aborts, redirects or errors refuses it. Never put an access
 check in a layout: a navigation skips layouts the browser already holds.
+
+A page never answers a request the browser marks as an image, script,
+stylesheet or font (`Sec-Fetch-Dest`): a dynamic `/[team]` route gets a plain
+404 for `/favicon.ico` before its middleware or any `rpc()` runs. A `route.ts`
+still answers one, and a navigation gets the page.
 
 ## Server Actions
 
@@ -312,7 +330,10 @@ import { ordersCancel } from '../../server-actions.generated'
   `Promise<T | Redirected>`. Narrow with `isRedirected` from
   `@rsc-kit/core/errors` before reading the value, and before any success toast
   after an `await` of a void stub. `<Form>` and `useAction` already skip
-  `onSuccess` for it.
+  `onSuccess` for it. `tsc` does not see a redirect read as text
+  (`` `/t/${id}` `` goes to `/t/[object Object]`): the project's oxlint runs
+  `typescript/restrict-template-expressions`, `no-base-to-string` and
+  `restrict-plus-operands` with `--type-aware`.
 - An action can log someone in: `Auth::login()` (or any `Cookie::queue`)
   sets the session cookie on the action's answer, and the renderer puts it
   on the page's response. Redirect after it as usual. A callable read inside
@@ -434,7 +455,9 @@ export function NewOrder() {
 ```
 
 - `error('field')` is the field's message. `formError` is a refusal that is
-  not about a field.
+  not about a field. `formRefusal` is the data a refusal carried, typed from the
+  form's action when it was built on `createActionClient().refusal(schema)` -
+  no cast.
 - `optimistic={(data) => addOptimistic(data)}` pairs with React's
   `useOptimistic`; a failure takes it back.
 - `resetOnSuccess` is on by default.
@@ -533,6 +556,20 @@ expect(await app.watched('/t/acme')).toEqual({ page: ['team:acme'], repos: ['tea
 
 `hostReply.settingCookies(result, 'laravel_session=...')` stands in for a
 callable that logs someone in.
+
+`app.markup(path)` is the page with every `<script>` taken out. Assert on it,
+not on `app.fetch()`'s body: the document carries the page's own payload, so
+text that is not on screen is still in the raw HTML.
+
+A client component that calls a stub is tested by mounting it, with happy-dom
+and `act`, and replacing the module the stubs come from. Register the DOM from a
+module the test file imports **first** (`import './dom'`), not in `beforeAll`:
+a library such as Base UI checks for a DOM when it is imported and keeps the
+answer. Never register it in a global preload - it replaces `Request` and
+drops the `Cookie` header, and `createTestApp` refuses to run while one is
+registered. Run `bun test --isolate`, since `mock.module` is process-wide. The
+test that matters is the one where the stub resolves `{ redirected }` and no
+success is shown.
 
 ## Production
 
