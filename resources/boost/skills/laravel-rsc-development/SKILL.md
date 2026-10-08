@@ -306,6 +306,13 @@ import { ordersCancel } from '../../server-actions.generated'
 - A redirect from an action renders the destination fresh, so a cookie or
   membership the action changed is already reflected. No revalidate needed
   before it.
+- A call to a generated stub that was redirected (an `RscRedirectException`,
+  or a guard sending an expired session to `/login`) resolves with
+  `{ redirected }`, not the method's return value; the stub is typed
+  `Promise<T | Redirected>`. Narrow with `isRedirected` from
+  `@rsc-kit/core/errors` before reading the value, and before any success toast
+  after an `await` of a void stub. `<Form>` and `useAction` already skip
+  `onSuccess` for it.
 - An action can log someone in: `Auth::login()` (or any `Cookie::queue`)
   sets the session cookie on the action's answer, and the renderer puts it
   on the page's response. Redirect after it as usual. A callable read inside
