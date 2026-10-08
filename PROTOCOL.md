@@ -59,7 +59,8 @@ message to tell an invalid form from a broken server
 | no session | `AuthenticationException` | 401 | `unauthenticated: true`, `error` |
 | a session, and still no | `AuthorizationException` | 403 | `unauthorized: true`, `error` |
 | go somewhere else | `RscRedirectException` | **200** | `redirect: "/login"`, `redirectStatus` |
-| a middleware aborted | `HttpException` (`abort(429)`) | that status | `error`, `refusalStatus: 429` |
+| a middleware aborted | `HttpException` (`abort(429, 'Slow down')`) | that status | `error`, `refusalStatus: 429` |
+| refused on purpose | `Rsc::refuse('Still in use', $data)` | 409 unless given | `error`, `refusalStatus`, `refusalData` |
 | the function failed | anything else | 500 | `error`, and under `app.debug` `debug` |
 
 - **A redirect is a 200.** An HTTP client follows a 3xx transparently, so a
@@ -71,6 +72,11 @@ message to tell an invalid form from a broken server
   a reply carrying both is a refusal with fields. `error` alone, with a 500,
   is reserved for what the visitor did not cause. A 5xx from `abort()` is
   reported to the log like any other failure.
+- **`refusalStatus` makes `error` a message for the visitor.** The renderer
+  shows it as written, in an action and in a read, data or no data, and never
+  replaces it with a generic one; a reply without it is a failure and is
+  replaced. So an `abort()` carries a message worth showing - with none, the
+  reply says `Refused.`
 - **A failure is reported**, because the endpoint answers it itself and
   Laravel's handler never sees it. Without `app.debug` its `error` is
   `"Server Error"`: the real message may name a query or a path. With it,
