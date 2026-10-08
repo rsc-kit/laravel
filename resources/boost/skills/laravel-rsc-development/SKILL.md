@@ -250,7 +250,12 @@ A status only reaches a person's response when it is decided before anything
 is sent. A 404 from a read inside a slot shows `not-found.tsx` where the page
 was - the layouts above it stay and the url is unchanged - the response stays
 200, and the page ends with a `noindex` tag. An `error.tsx` never sees it, and
-nothing should check for it. A search engine or
+nothing should check for it.
+
+A `not-found.tsx` beside a layout answers `notFound()` from every page under it,
+inside that layout - the nearest one above the page wins, like `error.tsx` - so
+`resources/js/app/(shop)/not-found.tsx` keeps the shop's header on a missing
+product. A url no route owns is answered by the root one only. A search engine or
 link-preview crawler is answered once the page has finished, so it gets the
 real 404. When it must be a 404 for everyone, decide whether the page exists in
 `middleware.ts`.
