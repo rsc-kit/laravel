@@ -240,6 +240,12 @@ as `formError`. Awaited directly, the stub **rejects** with an
 `ActionRefusedError` (`@rsc-kit/core/errors`: `.message`, `.status`), so a
 success toast or a navigation to an id that never came back does not run for a
 refused write; `useAction` reports it as `serverError`. Only a redirect resolves.
+An input Laravel refused (a `ValidationException`, a FormRequest that fails)
+rejects with a `ServerValidationError` instead, with `.fieldErrors` and
+`.formErrors` (a nested field dot-joined); `<Form>` shows the fields as it
+always did and `useAction` returns them as `validationErrors`. One rule for a
+stub: anything that did not happen rejects, and only a redirect resolves, so
+`isRedirected` is the only check a caller needs on what came back.
 A plain function has no `.refusal(schema)` to check data against, so the data is
 left out and the renderer's log says so. To act on it, call `rpc()` from an
 action built on `createActionClient()` and declare `.refusal(schema)`.
