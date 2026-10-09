@@ -289,6 +289,13 @@ input, so a wrong key fails `tsc`. It cannot redirect - a cache library reads
 it, nothing navigates - so refuse with `ServerAuthenticationError` (a 401) and
 let the cache's error handler send the visitor to sign in.
 
+The engine's server-only entries (`request`, `redirect`, `revalidate`, `cache`,
+`section` and the like) are refused in the browser bundle: a build fails, and a
+dev load, with "ended up in the browser bundle" and the import chain. The usual
+cause is a helper file that a page and a client component both import - split
+it, so what calls `redirect()` is only imported by server components. Mark your
+own server-only files with `import 'server-only'`; the build honours it.
+
 A page never answers a request the browser marks as an image, script,
 stylesheet or font (`Sec-Fetch-Dest`): a dynamic `/[team]` route gets a plain
 404 for `/favicon.ico` before its middleware or any `rpc()` runs. A `route.ts`
