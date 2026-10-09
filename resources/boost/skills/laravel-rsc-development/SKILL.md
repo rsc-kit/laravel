@@ -475,7 +475,12 @@ export function NewOrder() {
 }
 ```
 
-- `error('field')` is the field's message. `formError` is a refusal that is
+- `error('field')` is the field's message, and its names are checked: they are
+  read off the stub's typed parameter (the PHP signature, already in
+  `rsc-host.json`), so `error('titel')` fails `tsc`. Nested paths work
+  (`address.city`, `items.0.sku`). Open when the action says nothing. A
+  component below the form types its prop with `FieldNamesOf<typeof action>`
+  from `@rsc-kit/core/form`. `formError` is a refusal that is
   not about a field. `formRefusal` is the data a refusal carried, typed from the
   form's action when it was built on `createActionClient().refusal(schema)` -
   no cast.
