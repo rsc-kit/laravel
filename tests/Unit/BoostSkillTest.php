@@ -25,6 +25,7 @@ dataset('what an agent must be told', [
     'a late notFound() shows not-found.tsx where the page was' => ['where the page was'],
     'a not-found.tsx beside a layout answers the pages under it; the nearest wins' => ['the nearest one above the page wins'],
     'a stub awaited directly rejects with ActionRefusedError when the backend refuses it' => ['ActionRefusedError'],
+    'a stub whose input was refused rejects with ServerValidationError' => ['ServerValidationError'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],
