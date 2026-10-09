@@ -482,8 +482,12 @@ export function NewOrder() {
   component below the form types its prop with `FieldNamesOf<typeof action>`
   from `@rsc-kit/core/form`. A wrapper you write around a stub (a function of a
   `FormData`) declares its fields on its parameter, `(form: FormFields<'id' |
-  'name'>)`, and `error()` closes to them. A form fills only the **first**
-  parameter of a stub, so a stub of plain strings is never a form's action. `formError` is a refusal that is
+  'name'>)`, and `error()` closes to them. A team-scoped action,
+  `func(ctx, team, in)`, is a form's action once the team is bound:
+  `const create = stub.bind(null, team)` (a `const`; bound inline the names are
+  lost), because a form fills the struct parameter after whatever was bound. A
+  stub whose parameters are all plain strings has no struct to fill - wrap it. A
+  form that posts nothing names its fields on the form, `<Form fields={['size']}>`. `formError` is a refusal that is
   not about a field. `formRefusal` is the data a refusal carried, typed from the
   form's action when it was built on `createActionClient().refusal(schema)` -
   no cast.
