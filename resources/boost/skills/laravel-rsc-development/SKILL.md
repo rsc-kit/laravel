@@ -411,6 +411,13 @@ Rsc::changed("team:{$team->id}:repos");
   and each param is a string; a misspelt one fails the typecheck.
   `export const`, `export function` and a list - `export { refreshOn } from
   './names'` - all count. `export * from` does not: name it in a list.
+- A change made straight in the database - `psql`, a migration, an admin tool,
+  another app - says nothing, because nothing watches a table: open tabs stay
+  stale until refreshed (a reload reads fresh; the data is not wrong). Make the
+  writer call `Rsc::changed()` after the commit, or, for writes that never pass
+  through PHP, a trigger on the data table that upserts the `rsc_versions` row
+  in the same transaction - and `pg_notify('rsc_versions', '')` on Postgres, so
+  tabs hear at once. `usePolling` only where nothing can say it.
 - Name what the data is, not where it shows: `team:{id}:repos`,
   `deploy:{id}`, `order:{id}`. Two sections on the same name both refresh.
 - A change to a child is a change to its parent's list. Say both where the
