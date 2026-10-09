@@ -27,6 +27,7 @@ dataset('what an agent must be told', [
     'a stub awaited directly rejects with ActionRefusedError when the backend refuses it' => ['ActionRefusedError'],
     'a stub whose input was refused rejects with ServerValidationError' => ['ServerValidationError'],
     'a server-only engine module in the browser bundle fails the build' => ['ended up in the browser bundle'],
+    'error() and clearErrors() are typed from the action input' => ['FieldNamesOf'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],
