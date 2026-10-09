@@ -24,6 +24,8 @@ dataset('what an agent must be told', [
     'a page never answers an image, script, stylesheet or font request' => ['Sec-Fetch-Dest'],
     'a late notFound() shows not-found.tsx where the page was' => ['where the page was'],
     'a not-found.tsx beside a layout answers the pages under it; the nearest wins' => ['the nearest one above the page wins'],
+    'a stub awaited directly rejects with ActionRefusedError when the backend refuses it' => ['ActionRefusedError'],
+    'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],
     'a client component is tested with the DOM registered by the first import' => ["import './dom'"],

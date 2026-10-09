@@ -235,11 +235,14 @@ by the app's generic message on purpose, so a query's SQL never reaches a form.
 A read in a page answers the status itself, as above; `fetchQuery` rejects with
 the message, `.status` and the refusal's `.refusal`.
 
-**Through a generated stub**, `<Form action={ordersDelete}>`, only the message
-arrives, as `formError`. A plain function has no `.refusal(schema)` to check
-data against, so the data is left out and the renderer's log says so. To act on
-it, call `rpc()` from an action built on `createActionClient()` and declare
-`.refusal(schema)`.
+**Through a generated stub**, `<Form action={ordersDelete}>` shows the message
+as `formError`. Awaited directly, the stub **rejects** with an
+`ActionRefusedError` (`@rsc-kit/core/errors`: `.message`, `.status`), so a
+success toast or a navigation to an id that never came back does not run for a
+refused write; `useAction` reports it as `serverError`. Only a redirect resolves.
+A plain function has no `.refusal(schema)` to check data against, so the data is
+left out and the renderer's log says so. To act on it, call `rpc()` from an
+action built on `createActionClient()` and declare `.refusal(schema)`.
 
 Refuse with data when the input is fine and the answer is still no, and the
 page needs more than a sentence - what is blocking a delete, as links. Do not
@@ -274,6 +277,11 @@ export const middleware = ['auth', 'verified', 'can:update,post']
 It fails closed: only a pipeline that reaches the end lets the page render. A
 middleware that aborts, redirects or errors refuses it. Never put an access
 check in a layout: a navigation skips layouts the browser already holds.
+
+A query built from `createActionClient().input(schema)` takes that schema's
+input, so a wrong key fails `tsc`. It cannot redirect - a cache library reads
+it, nothing navigates - so refuse with `ServerAuthenticationError` (a 401) and
+let the cache's error handler send the visitor to sign in.
 
 A page never answers a request the browser marks as an image, script,
 stylesheet or font (`Sec-Fetch-Dest`): a dynamic `/[team]` route gets a plain
