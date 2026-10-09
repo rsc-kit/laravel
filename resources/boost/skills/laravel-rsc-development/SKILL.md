@@ -480,7 +480,10 @@ export function NewOrder() {
   `rsc-host.json`), so `error('titel')` fails `tsc`. Nested paths work
   (`address.city`, `items.0.sku`). Open when the action says nothing. A
   component below the form types its prop with `FieldNamesOf<typeof action>`
-  from `@rsc-kit/core/form`. `formError` is a refusal that is
+  from `@rsc-kit/core/form`. A wrapper you write around a stub (a function of a
+  `FormData`) declares its fields on its parameter, `(form: FormFields<'id' |
+  'name'>)`, and `error()` closes to them. A form fills only the **first**
+  parameter of a stub, so a stub of plain strings is never a form's action. `formError` is a refusal that is
   not about a field. `formRefusal` is the data a refusal carried, typed from the
   form's action when it was built on `createActionClient().refusal(schema)` -
   no cast.
