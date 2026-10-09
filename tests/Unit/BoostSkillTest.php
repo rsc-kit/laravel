@@ -29,6 +29,7 @@ dataset('what an agent must be told', [
     'a server-only engine module in the browser bundle fails the build' => ['ended up in the browser bundle'],
     'error() and clearErrors() are typed from the action input' => ['FieldNamesOf'],
     'a wrapper around a stub declares its form fields with FormFields' => ['FormFields'],
+    'a team-scoped stub is a form action once its team is bound' => ['bind(null, team)'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],
