@@ -64,6 +64,15 @@ Every Laravel route still works: `/login`, a Blade page, a webhook or a file
 under `/storage` is forwarded to Laravel. Per url, **if the React tree has it,
 React renders it**; otherwise Laravel does.
 
+A dynamic route at the root, `[team]/[app]`, has every url of two segments, so
+with the renderer in front it also has Laravel's `/auth/github` and `/login/verify`:
+it renders, says `notFound()`, and a page that said that is not handed to Laravel
+(sign-in loops). Name the prefixes Laravel answers in `vite.config.ts`,
+`rscKit({ backendPaths: ['/auth', '/login'] })`, and they are forwarded before
+any page is asked - a prefix at a segment boundary, every method. A team called
+`auth` is then unreachable. With Laravel in front your own routes already win.
+Do not write catch-all `route.ts` files that forward by hand.
+
 There is no PHP-side rendering, no socket, no `route.php` and no worker for
 PHP to supervise. Do not write any of those.
 

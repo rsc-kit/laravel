@@ -31,6 +31,7 @@ dataset('what an agent must be told', [
     'a wrapper around a stub declares its form fields with FormFields' => ['FormFields'],
     'a team-scoped stub is a form action once its team is bound' => ['bind(null, team)'],
     'a change straight in the database says nothing to open tabs' => ['straight in the database'],
+    'backendPaths forwards a backend prefix before any page is matched' => ['backendPaths'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],

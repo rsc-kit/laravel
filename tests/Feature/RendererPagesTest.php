@@ -10,6 +10,8 @@ file_put_contents($manifest, json_encode([
         ['segments' => []],
         ['segments' => [['type' => 'static', 'value' => 'orders'], ['type' => 'param', 'value' => 'id']]],
         ['segments' => [['type' => 'static', 'value' => 'docs'], ['type' => 'catchAll', 'value' => 'rest']]],
+        // A dynamic root route, /{team}/{app}: it has every url of two segments.
+        ['segments' => [['type' => 'param', 'value' => 'team'], ['type' => 'param', 'value' => 'app']]],
     ],
     'apis' => [
         ['segments' => [['type' => 'static', 'value' => 'api'], ['type' => 'static', 'value' => 'health']], 'methods' => ['GET']],
@@ -65,4 +67,15 @@ it("routes a route.ts's methods, and leaves the rest to the app", function () {
 
 it('leaves a url the tree does not have to the app', function () {
     $this->get('/login')->assertOk()->assertSee('laravel login');
+});
+
+// With Laravel in front, a page route does not shadow the application's own: a
+// dynamic /{team}/{app} has every url of two segments, /gitlab/connect among them,
+// and the application's route for it is registered before the package's, so it
+// answers. (With the renderer in front it is the other way round, and
+// rscKit({ backendPaths }) is what names the urls Laravel owns.)
+it("leaves the application's own route to it when a dynamic page route would also match", function () {
+    $this->get('/gitlab/connect')->assertOk()->assertSee('laravel gitlab connect');
+    // And the page route still takes the urls the app has no route for.
+    $this->get('/acme/blog')->assertStatus(502);
 });
