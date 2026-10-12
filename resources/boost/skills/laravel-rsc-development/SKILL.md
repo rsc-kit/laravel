@@ -41,7 +41,14 @@ Follow these on every change; each is explained below.
   policy - never only in the component that shows the button.
 - **Links and redirects are typed:** ``<Link href={`/orders/${id}`}>``, a
   template literal, so a renamed page fails the typecheck.
-- **Metadata is `export const metadata`**, never tags in a page's markup.
+- **Metadata is `export const metadata`**, never tags in a page's markup. A
+  page's own share image is a file beside it, not a tag:
+  `resources/js/app/pricing/opengraph-image.png` (and `twitter-image.png`) is
+  the card for `/pricing` and the pages under it, the nearest folder winning -
+  a route group such as `(marketing)` counts as a folder, and `[slug]/` covers
+  every page it answers. A page that exports `openGraph.images` replaces the
+  site's image rather than adding a second `og:image` behind it; the nearer of
+  the file and the export wins, and in the same folder the file does.
 - **Never edit generated files:** `resources/js/server-actions.generated.ts`,
   `rsc-host.json`, `.rsc-kit/`. Change the PHP they are generated from.
 - **Secrets are generated, never invented or committed:** `php artisan
