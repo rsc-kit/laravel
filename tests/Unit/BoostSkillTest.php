@@ -33,6 +33,7 @@ dataset('what an agent must be told', [
     'a change straight in the database says nothing to open tabs' => ['straight in the database'],
     'backendPaths forwards a backend prefix before any page is matched' => ['backendPaths'],
     'a page\'s own share image is an opengraph-image file in its folder, and an exported one replaces the site\'s' => ['opengraph-image'],
+    'a src/commands file is the renderer\'s own release step or worker, not Laravel\'s migrate or queue' => ['src/commands'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],
