@@ -644,12 +644,21 @@ npm ci && npm run build
 - With `refreshOn`: set `RSC_SIGNING_SECRET` on every renderer instance, and
   keep versions where every server reads them - a shared cache store, or
   `RSC_VERSIONS=database`.
+- A release step is `php artisan migrate` and a queue worker is `php artisan
+  queue:work`: Laravel's, run where Laravel runs. A file in `src/commands` is
+  for work the renderer itself needs, run as `node .output/server/commands.mjs
+  <name>` (`./app <name>` in a compiled binary). It returns its exit code, and
+  the app's `register()` runs for it only if it exports `register = true`.
+  Never `node .output/server/index.mjs <name>`: that is the server, and it
+  starts.
 
 ## Do Not
 
 - Import `rpc`, or call it from a client component.
 - Write `route.php`, a socket, `rsc:serve`, or anything that renders in PHP.
 - Edit `server-actions.generated.ts` or `rsc-host.json` by hand.
+- Write a `src/commands` file to migrate the database or drain Laravel's
+  queue; those are `php artisan`.
 - Add `loading.tsx` to fix a refused route; move the read into a slot.
 - Check access in a layout; use `middleware.ts`.
 - Poll with `usePolling` for data the backend can announce: `refreshOn` plus
