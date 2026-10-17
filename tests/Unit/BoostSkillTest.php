@@ -34,6 +34,8 @@ dataset('what an agent must be told', [
     'backendPaths forwards a backend prefix before any page is matched' => ['backendPaths'],
     'a page\'s own share image is an opengraph-image file in its folder, and an exported one replaces the site\'s' => ['opengraph-image'],
     'a src/commands file is the renderer\'s own release step or worker, not Laravel\'s migrate or queue' => ['src/commands'],
+    'a page also refreshes the sections beside its layouts, nearest first, so what every tab shares lives in the layout' => ['beside its layouts'],
+    'a section is exported by a name, so an editor offers the component' => ['export default Repos'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],

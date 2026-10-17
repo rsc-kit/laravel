@@ -357,7 +357,12 @@ import { ordersCancel } from '../../server-actions.generated'
 - `Rsc::revalidate('orders')` names a region that changed: an
   `orders.section.tsx`, a slot, `'page'` or `'all'`. The re-rendered region
   comes back with the action's answer. A name the calling page does not show
-  is skipped.
+  is skipped. A page shows the sections beside it, then the ones beside its
+  layouts, nearest first - so what every tab shares, a header or a status,
+  lives in a section next to the layout and is refreshed by name from any
+  page under it. Give it its own `<Suspense>` when it reads `params`, pass
+  `params` through, and mark the active tab with `usePathname()`, not a
+  refresh.
 - A redirect from an action renders the destination fresh, so a cookie or
   membership the action changed is already reflected. No revalidate needed
   before it.
@@ -390,12 +395,20 @@ open tab showing it refreshes, with nothing polling and no client code.
 // resources/js/app/t/[team]/repos.section.tsx
 import { section } from '@rsc-kit/core/section'
 
-export default section('repos', async function Repos({ params }) {
+async function ReposList({ params }) {
   const { team } = await params
   const repos = await rpc('Repos.list', team)
 
   return <ul>{repos.map((r) => <li key={r.id}>{r.name}</li>)}</ul>
-}, { refreshOn: ({ params }) => [`team:${params.team}:repos`] })
+}
+
+// Named, then exported: an editor offers an import by the name a default
+// export has, and `export default section(...)` has none.
+const Repos = section('repos', ReposList, {
+  refreshOn: ({ params }) => [`team:${params.team}:repos`],
+})
+
+export default Repos
 ```
 
 ```php
