@@ -80,6 +80,14 @@ any page is asked - a prefix at a segment boundary, every method. A team called
 `auth` is then unreachable. With Laravel in front your own routes already win.
 Do not write catch-all `route.ts` files that forward by hand.
 
+A url named there is never a page in the browser either: a `<Link>`, `visit()`
+or `redirect()` to `/auth/github` loads the document and is never prefetched, so
+a Laravel route that bounces on to GitHub works from a click and a hover does
+not start the OAuth flow. Unnamed, the router fetches it as a page, the bounce
+fails and nothing happens on the tap. The prefixes are written into
+`rsc-routes.d.ts`, so `redirect('/auth/github')` needs no cast (`/authors` is
+still refused). A redirect to another site works as written.
+
 There is no PHP-side rendering, no socket, no `route.php` and no worker for
 PHP to supervise. Do not write any of those.
 
@@ -527,6 +535,13 @@ export function NewOrder() {
   not about a field. `formRefusal` is the data a refusal carried, typed from the
   form's action when it was built on `createActionClient().refusal(schema)` -
   no cast.
+- A search box is a GET form whose `action` is a url, `<Form action="/domains">`.
+  When that is the page on screen, a search on the page it is on keeps the page
+  up, old results and all, until the new ones land, and `pending` is true until
+  they have - no shell, no skeleton. Do not wrap it in your own state or a
+  Suspense `key`. To draw a skeleton where the results are, style them from the
+  form's `data-pending` attribute. A `<Link>` to the same path with another
+  query is still a page of its own.
 - `optimistic={(data) => addOptimistic(data)}` pairs with React's
   `useOptimistic`; a failure takes it back.
 - `resetOnSuccess` is on by default.
