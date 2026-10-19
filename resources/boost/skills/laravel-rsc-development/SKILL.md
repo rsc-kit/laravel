@@ -285,6 +285,11 @@ was - the layouts above it stay and the url is unchanged - the response stays
 200, and the page ends with a `noindex` tag. An `error.tsx` never sees it, and
 nothing should check for it.
 
+An `error.tsx`'s `reset()` asks the server for the page again (the layouts
+stay) and shows what it answers, so a "Try again" button recovers once a Laravel
+call that failed for a moment succeeds. It is the whole retry: no `refresh()`
+beside it and no reload.
+
 A `not-found.tsx` beside a layout answers `notFound()` from every page under it,
 inside that layout - the nearest one above the page wins, like `error.tsx` - so
 `resources/js/app/(shop)/not-found.tsx` keeps the shop's header on a missing

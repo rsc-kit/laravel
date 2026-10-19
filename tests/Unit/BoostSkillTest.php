@@ -40,6 +40,7 @@ dataset('what an agent must be told', [
     'a page also refreshes the sections beside its layouts, nearest first, so what every tab shares lives in the layout' => ['beside its layouts'],
     'a section is exported by a name, so an editor offers the component' => ['export default Repos'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],
+    'error.tsx reset() asks the server for the page again, so Try again recovers' => ['asks the server for the page again'],
     'a crawler is answered once the page has finished' => ['crawler'],
     'app.markup(path) is the page without its scripts' => ['app.markup(path)'],
     'a client component is tested with the DOM registered by the first import' => ["import './dom'"],
