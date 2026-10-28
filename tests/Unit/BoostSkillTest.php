@@ -37,6 +37,7 @@ dataset('what an agent must be told', [
     'a GET Form whose action is the page on screen keeps the page up while the query runs, pending until the results land' => ['search on the page it is on'],
     'a page\'s own share image is an opengraph-image file in its folder, and an exported one replaces the site\'s' => ['opengraph-image'],
     'a src/commands file is the renderer\'s own release step or worker, not Laravel\'s migrate or queue' => ['src/commands'],
+    'a src/commands file does not import instrumentation.ts unless it exports register = true' => ['does not import `instrumentation.ts` unless it exports `register = true`'],
     'a page also refreshes the sections beside its layouts, nearest first, so what every tab shares lives in the layout' => ['beside its layouts'],
     'a section is exported by a name, so an editor offers the component' => ['export default Repos'],
     'a query takes its schema input, and cannot redirect' => ['It cannot redirect'],

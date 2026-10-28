@@ -681,7 +681,8 @@ npm ci && npm run build
   queue:work`: Laravel's, run where Laravel runs. A file in `src/commands` is
   for work the renderer itself needs, run as `node .output/server/commands.mjs
   <name>` (`./app <name>` in a compiled binary). It returns its exit code, and
-  the app's `register()` runs for it only if it exports `register = true`.
+  it does not import `instrumentation.ts` unless it exports `register = true`:
+  only then are that file's environment checks and `register()` run for it.
   Never `node .output/server/index.mjs <name>`: that is the server, and it
   starts.
 
