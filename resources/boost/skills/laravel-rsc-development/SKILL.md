@@ -565,6 +565,11 @@ export function NewOrder() {
   string, the same on every instance. It is not the host-call secret and
   does not fall back to it. In production, an app that uses `refreshOn`
   without it refuses to serve.
+- Never set `NODE_ENV` for the renderer. A built renderer
+  started with no `NODE_ENV` sets the one it was built with in its own
+  process before the app loads, so `process.env.NODE_ENV` and a typed
+  `env.NODE_ENV` are `production` there. Laravel's `APP_ENV` is a separate
+  setting.
 - `RSC_STREAM_KEEPALIVE_MS` (the renderer, default 8000): set it below the
   idle timeout of anything in front that drops quiet connections, or open
   tabs keep reconnecting.
