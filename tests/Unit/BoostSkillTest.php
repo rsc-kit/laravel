@@ -59,6 +59,7 @@ dataset('what an agent must be told', [
     'the admin theme follows the system, and the root <html> needs suppressHydrationWarning' => ['suppressHydrationWarning'],
     'a Laravel 422 from an admin source shows under the form\'s fields, uncaught' => ['Nothing to catch'],
     'a FormRequest callable receives the request alone, so an admin update sends its id in the values' => ['no argument after it'],
+    'a section is named by its file, and a different section() name fails the build' => ['name it after its file'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {
