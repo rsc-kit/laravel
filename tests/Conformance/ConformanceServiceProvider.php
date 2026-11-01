@@ -63,6 +63,11 @@ class ConformanceServiceProvider extends ServiceProvider
 
             return 'ok';
         });
+        $registry->register('Conformance.flash', function (): string {
+            Rsc::flash('Saved.');
+
+            return 'ok';
+        });
         $registry->register('Conformance.double', fn (int $n): int => $n * 2);
         $registry->register('Conformance.invalidNested', fn () => throw ValidationException::withMessages([
             'address.city' => 'The city is required.',
