@@ -394,6 +394,15 @@ import { ordersCancel } from '../../server-actions.generated'
   on the page's response. Redirect after it as usual. A callable read inside
   a page cannot - its response headers have gone - so cookies are set from
   actions.
+- A message for the next page ("Invoice sent." after a redirect): call
+  `Rsc::flash('Invoice sent.')` in the action - or `Rsc::flash('Declined.',
+  'error')`; the kinds are success, error, info and warning - and render one
+  client component in the root layout that calls
+  `useFlash(({ message, kind }) => toast(message))` from
+  `@rsc-kit/core/useFlash`. It shows once, and not again on reload. It is a
+  cookie, so from an action or a controller, never a callable a page reads.
+  The browser reads it, so the package leaves it unencrypted: nothing secret
+  goes in a flash.
 - A change that did not come from the tab - a webhook, a job, another user -
   is `Rsc::changed()`, below.
 
@@ -643,6 +652,21 @@ page.tsx                           export default panel.Dashboard
 - The header has a Light / Dark / System menu, System by default. The root
   layout's `<html>` needs `suppressHydrationWarning`, because the theme is set
   before React hydrates.
+- Saves and deletes say so in a toast on the page the visitor lands on.
+- A belongsTo is `fields: { categoryId: { relation: 'categories' } }`: a select
+  of the categories resource's rows, its key saved and its title shown, and
+  `col.relation('categoryId', 'categories')` shows the title in the table. The
+  choices are that resource's `list` with `perPage: null`, as the visitor, so
+  relate to a resource with a select's worth of rows. The posted id is checked
+  with that resource's `find` before the save, so the PHP side gets an id the
+  visitor can see; still scope it to the tenant there.
+- An enum's options read humanized (`in_stock` is "In stock") and save as they
+  are; `options: [{ value: 'active', label: 'Live' }]` labels them yourself.
+- Rows can be ticked for the panel's own Delete and the resource's
+  `bulkActions: [{ name: 'publish', label: 'Publish', run: (rows, context) =>
+  rpc('Products.publish', rows.map((row) => row.id), context.tenant?.id) }]`.
+  `run` gets rows found as the visitor, after `authorize`; `destructive: true`
+  asks first.
 - A plugin (`definePlugin`) adds resources and an `onChange` that runs after a
   write and never fails it. Publish one with `@rsc-kit/admin` as a peer and the
   `rsc-kit-admin-plugin` keyword.
