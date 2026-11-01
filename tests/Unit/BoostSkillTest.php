@@ -47,6 +47,18 @@ dataset('what an agent must be told', [
     'a client component is tested with the DOM registered by the first import' => ["import './dom'"],
     'createTestApp refuses to run while a DOM is registered globally' => ['`createTestApp` refuses to run'],
     'a built renderer started with no NODE_ENV sets the one it was built with' => ['started with no `NODE_ENV` sets the one it was built with'],
+    'an admin resource\'s form is any Standard Schema; one without Standard JSON Schema lists its fields' => ['any Standard Schema'],
+    'an admin number field arrives as a number: z.number(), not z.coerce.number()' => ['not z.coerce.number()'],
+    'an admin data source is five functions told the context { tenant }, and find answering null is a 404' => ['{ tenant }'],
+    'an admin table in client mode is listed once with perPage: null' => ['perPage: null'],
+    'an admin panel\'s authorize runs on every page and every save, delete and switch' => ['authorize'],
+    'an admin panel refuses a current tenant that is not one of the visitor\'s' => ['tenants()'],
+    'an admin panel is mounted by seven route files, and the section is admin-table.section.tsx' => ['admin-table.section.tsx'],
+    'an admin plugin is published with the rsc-kit-admin-plugin keyword' => ['rsc-kit-admin-plugin'],
+    'an admin form is checked by the browser first, and the server still checks every save' => ['Checked in the browser first'],
+    'the admin theme follows the system, and the root <html> needs suppressHydrationWarning' => ['suppressHydrationWarning'],
+    'a Laravel 422 from an admin source shows under the form\'s fields, uncaught' => ['Nothing to catch'],
+    'a FormRequest callable receives the request alone, so an admin update sends its id in the values' => ['no argument after it'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {
