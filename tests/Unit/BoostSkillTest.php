@@ -60,6 +60,10 @@ dataset('what an agent must be told', [
     'a Laravel 422 from an admin source shows under the form\'s fields, uncaught' => ['Nothing to catch'],
     'a FormRequest callable receives the request alone, so an admin update sends its id in the values' => ['no argument after it'],
     'a section is named by its file, and a different section() name fails the build' => ['name it after its file'],
+    'a one-time message survives a redirect: Rsc::flash() in the action, useFlash() in the root layout' => ['useFlash'],
+    'a backend leaves the same one-time message with Rsc::flash()' => ["Rsc::flash('"],
+    'an admin relation is a select of another resource\'s rows, listed and checked as the visitor' => ["relation: 'categories'"],
+    'an admin bulk action is given rows found as the visitor, after authorize' => ['bulkActions'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {
