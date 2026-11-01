@@ -417,6 +417,8 @@ async function ReposList({ params }) {
 
 // Named, then exported: an editor offers an import by the name a default
 // export has, and `export default section(...)` has none.
+// The name is the file's - repos.section.tsx is section('repos').
+// Always name it after its file, or the build fails.
 const Repos = section('repos', ReposList, {
   refreshOn: ({ params }) => [`team:${params.team}:repos`],
 })

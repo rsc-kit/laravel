@@ -47,6 +47,7 @@ dataset('what an agent must be told', [
     'a client component is tested with the DOM registered by the first import' => ["import './dom'"],
     'createTestApp refuses to run while a DOM is registered globally' => ['`createTestApp` refuses to run'],
     'a built renderer started with no NODE_ENV sets the one it was built with' => ['started with no `NODE_ENV` sets the one it was built with'],
+    'a section is named by its file, and a different section() name fails the build' => ['name it after its file'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {
