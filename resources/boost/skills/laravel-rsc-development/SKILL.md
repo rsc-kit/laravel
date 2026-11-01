@@ -556,6 +556,97 @@ export function NewOrder() {
   `@rsc-kit/core/useAction`: `execute`, `isPending`, `onSuccess`, `onError`
   and an `optimistic` option.
 
+## Admin Panels
+
+`@rsc-kit/admin` draws a shadcn admin panel (sidebar, data table, forms,
+dialogs) from resources. It needs Tailwind v4 and shadcn. The panel runs in the
+renderer; Laravel keeps the data, the rules and who may see it.
+
+```ts
+// resources/js/admin/resources/products.ts
+import { defineResource, type DataSource } from '@rsc-kit/admin'
+import * as z from 'zod'
+
+const form = z.object({ name: z.string().min(2), sku: z.string(), price: z.number().min(0) })
+type Product = { id: number; name: string; sku: string; price: number }
+
+const source: DataSource<Product, z.infer<typeof form>> = {
+  list: (query) => rpc<{ rows: Product[]; total: number }>('Products.list', query),
+  find: (id) => rpc<Product | null>('Products.find', Number(id)),
+  create: (values) => rpc<Product>('Products.create', values),
+  update: (id, values) => rpc<Product>('Products.update', { ...values, id: Number(id) }),
+  delete: (id) => rpc('Products.delete', Number(id)),
+}
+
+export const products = defineResource<Product>()({
+  name: 'products', key: 'id', title: 'name', source, form,
+  table: (col) => [col.text('name').searchable().sortable(), col.text('sku'), col.money('price').sortable()],
+})
+```
+
+```php
+// app/Rsc/Products.php
+public function update(UpdateProduct $request): Product
+{
+    $product = Product::findOrFail($request->integer('id'));
+    $product->update($request->validated());
+
+    return $product;
+}
+```
+
+- The form is any Standard Schema - zod, valibot, ArkType. Its fields are read
+  from the schema's Standard JSON Schema; one without it lists them in
+  `fields`. A number field arrives as a number: write `z.number()`, not
+  z.coerce.number().
+- Checked in the browser first: the schema's constraints become `required`,
+  `min`, `maxLength`, `pattern` and so on, with the message in shadcn's
+  `FieldError`. The schema then runs on the server, and Laravel's FormRequest
+  after it. Laravel's answer is the one that counts: a rule the schema cannot
+  know (`Rule::unique('products', 'sku')->ignore($this->integer('id'))`)
+  comes back as a 422, and its messages land under the same fields. Nothing to
+  catch - let the `rpc()` call throw.
+- A FormRequest method receives the request alone - no argument after it - so
+  `update` sends the id inside the values, as above.
+- `list` is told `{ q, sort, dir, page, perPage, filters }`. Allowlist `sort`
+  before it reaches `orderBy`. A resource with `mode: 'client'` is listed once
+  with `perPage: null` and must return every row; the browser searches, sorts
+  and pages. `find` answering `null` is a 404.
+- Every call's last argument is the context `{ tenant }`, null without tenancy.
+  Pass `tenant.id` on to the PHP side; do not trust a team id from the form.
+- `authorize: () => rpc<boolean>('Admin.allowed')` runs on every page and on
+  every save, delete and team switch, because the panel's actions are reachable
+  without its pages. A refusal is a 404. Laravel middleware names in the same
+  `middleware.ts` run first, but they guard pages only, so the panel still needs
+  `authorize`.
+- `tenancy: { tenants, current, switch }` adds a team switcher. `current` reads
+  the session, the panel refuses one that is not in `tenants()`, and `switch`
+  runs in an action, so `rpc('Teams.switch', id)` may write the session.
+- Mount it with seven files under `resources/js/app/admin/`. The section must
+  be named `admin-table.section.tsx`, because a delete refreshes it by that name:
+
+```
+middleware.ts                      export const middleware = ['auth']
+                                   export default panel.middleware
+layout.tsx                         export default panel.Layout
+page.tsx                           export default panel.Dashboard
+[resource]/page.tsx                export const params = resourceParams
+                                   export const searchParams = listSearch
+                                   export default panel.Index
+[resource]/admin-table.section.tsx export default panel.Table
+[resource]/new/page.tsx            export const params = resourceParams
+                                   export default panel.Create
+[resource]/[id]/page.tsx           export const params = recordParams
+                                   export default panel.Edit
+```
+
+- The header has a Light / Dark / System menu, System by default. The root
+  layout's `<html>` needs `suppressHydrationWarning`, because the theme is set
+  before React hydrates.
+- A plugin (`definePlugin`) adds resources and an `onChange` that runs after a
+  write and never fails it. Publish one with `@rsc-kit/admin` as a peer and the
+  `rsc-kit-admin-plugin` keyword.
+
 ## Environment
 
 - A browser-readable variable starts with `VITE_` and is read as
