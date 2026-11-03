@@ -4,6 +4,7 @@ namespace RscKit\Http;
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Contracts\Session\Session;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use Illuminate\Validation\ValidationException;
@@ -81,6 +82,59 @@ class HostCallDispatcher
             return $this->dispatchBatch($body['calls']);
         }
 
+        $session = request()->hasSession() ? request()->session() : null;
+        $before = $session?->all();
+
+        $answer = $this->call($body);
+
+        if ($session !== null && $this->touched($session, $before, $answer['reply'])) {
+            $answer['reply']['touchedSession'] = true;
+        }
+
+        return $answer;
+    }
+
+    /**
+     * Whether a call left its mark on the session, or the session on its answer.
+     *
+     * The renderer asks on one kind of page: one a shared cache may keep,
+     * whose calls arrive with no cookie - StartSession opened a fresh session
+     * for them and minted it a token. A call that wrote to that session, or
+     * whose answer carries the token (`csrf_token()`, `@csrf` in a rendered
+     * fragment), would hand that one session to every visitor of the copy, and
+     * every form on the page would answer 419; told, the renderer sends the
+     * page private. A call that only read it found nothing of anyone's.
+     *
+     * The token is looked for only when the call came without a session
+     * cookie: the only time the answer is asked about, and the only time it
+     * is worth encoding a result twice.
+     *
+     * @param  array<string, mixed>|null  $before
+     * @param  array<string, mixed>  $reply
+     */
+    private function touched(Session $session, ?array $before, array $reply): bool
+    {
+        if ($session->all() !== $before) {
+            return true;
+        }
+
+        $token = $session->token();
+
+        if (! is_string($token) || $token === '' || request()->cookies->has(config('session.cookie'))) {
+            return false;
+        }
+
+        return str_contains(json_encode($reply, JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR) ?: '', $token);
+    }
+
+    /**
+     * One call, run and answered.
+     *
+     * @param  array<string, mixed>|null  $body
+     * @return array{status: int, reply: array<string, mixed>}
+     */
+    private function call(?array $body): array
+    {
         $name = $body['function'] ?? null;
 
         if (! is_string($name) || $name === '') {
