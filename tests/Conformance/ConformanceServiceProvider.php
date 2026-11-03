@@ -68,11 +68,6 @@ class ConformanceServiceProvider extends ServiceProvider
 
             return 'ok';
         });
-        $registry->register('Conformance.session', function (): string {
-            session()->put('conformance', true);
-
-            return 'ok';
-        });
         $registry->register('Conformance.double', fn (int $n): int => $n * 2);
         $registry->register('Conformance.invalidNested', fn () => throw ValidationException::withMessages([
             'address.city' => 'The city is required.',

@@ -193,13 +193,12 @@ describe('what a failure means', function () {
                 'error' => 'Still in use',
                 'refusalStatus' => 409,
                 'refusalData' => ['blockers' => [['id' => 7, 'href' => '/orders/7']]],
-                'touchedSession' => false,
             ]));
 
         // Without data, the refusal an abort always was.
         expect($dispatcher->dispatch(['function' => 'Projects.archive', 'args' => []]))->toBe([
             'status' => 423,
-            'reply' => ['error' => 'Not now', 'refusalStatus' => 423, 'touchedSession' => false],
+            'reply' => ['error' => 'Not now', 'refusalStatus' => 423],
         ]);
 
         Exceptions::assertNothingReported();
@@ -453,9 +452,9 @@ describe('a batch', function () {
         );
 
         expect($lines)->toHaveCount(2);
-        expect($lines[0])->toMatchArray(['index' => 0, 'status' => 500, 'touchedSession' => false]);
+        expect($lines[0])->toMatchArray(['index' => 0, 'status' => 500]);
         expect($lines[0])->not->toHaveKey('result');
-        expect($lines[1])->toBe(['index' => 1, 'status' => 200, 'result' => ['ok'], 'touchedSession' => false]);
+        expect($lines[1])->toBe(['index' => 1, 'status' => 200, 'result' => ['ok']]);
         Exceptions::assertReported(JsonException::class);
     });
 
@@ -493,7 +492,7 @@ describe('a single answer', function () {
             ->respond(['function' => 'Stats.ratio', 'args' => []]);
 
         expect($answer['status'])->toBe(500);
-        expect(json_decode($answer['json'], true))->toBe(['error' => 'Server Error', 'touchedSession' => false]);
+        expect(json_decode($answer['json'], true))->toBe(['error' => 'Server Error']);
     });
 });
 
