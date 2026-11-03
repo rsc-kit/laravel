@@ -87,9 +87,9 @@ class HostCallDispatcher
 
         $answer = $this->call($body);
 
-        if ($session !== null && $this->touched($session, $before, $answer['reply'])) {
-            $answer['reply']['touchedSession'] = true;
-        }
+        // Said on every reply, false included: the renderer reads a reply
+        // that does not say as one that did, and keeps the page private.
+        $answer['reply']['touchedSession'] = $session !== null && $this->touched($session, $before, $answer['reply']);
 
         return $answer;
     }
@@ -404,7 +404,13 @@ class HostCallDispatcher
         try {
             return ['status' => $status, 'json' => json_encode($reply, JSON_THROW_ON_ERROR)];
         } catch (JsonException $e) {
+            // The call still ran, and what it did to the session stands.
+            $touched = $reply['touchedSession'] ?? null;
             ['status' => $status, 'reply' => $reply] = $this->failure($e);
+
+            if ($touched !== null) {
+                $reply['touchedSession'] = $touched;
+            }
 
             return ['status' => $status, 'json' => json_encode($reply, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE)];
         }

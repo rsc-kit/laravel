@@ -135,8 +135,9 @@ describe('a call that touched the session', function () {
         registerHostFunction('Me.who', fn () => ['who' => auth()->id()]);
         registerHostFunction('Orders.recent', fn () => [1, 2]);
 
-        expect(callHost(['function' => 'Me.who', 'args' => []])->json())->not->toHaveKey('touchedSession')
-            ->and(callHost(['function' => 'Orders.recent', 'args' => []])->json())->not->toHaveKey('touchedSession');
+        // False, not absent: a reply that does not say is read as one that did.
+        expect(callHost(['function' => 'Me.who', 'args' => []])->json('touchedSession'))->toBeFalse()
+            ->and(callHost(['function' => 'Orders.recent', 'args' => []])->json('touchedSession'))->toBeFalse();
     });
 
     it('marks each call in a batch on its own', function () {
@@ -148,7 +149,7 @@ describe('a call that touched the session', function () {
             ['function' => 'Forms.token', 'args' => []],
         ]])->streamedContent())))->map(fn ($line) => json_decode($line, true))->keyBy('index');
 
-        expect($lines[0])->not->toHaveKey('touchedSession')
+        expect($lines[0]['touchedSession'] ?? null)->toBeFalse()
             ->and($lines[1]['touchedSession'] ?? null)->toBeTrue();
     });
 });
@@ -259,7 +260,7 @@ it('answers a result it cannot encode as a failure in the contract\'s own shape'
     $response = callHost(['function' => 'Stats.ratio', 'args' => []]);
 
     $response->assertStatus(500);
-    expect($response->json())->toBe(['error' => 'Server Error']);
+    expect($response->json())->toBe(['error' => 'Server Error', 'touchedSession' => false]);
 });
 
 it('closes every buffer between a batch line and the socket', function () {
@@ -331,7 +332,7 @@ describe('a failure under app.debug', function () {
         config()->set('app.debug', false);
         registerHostFunction('Orders.broken', fn () => throw new RuntimeException('boom'));
 
-        expect(callHost(['function' => 'Orders.broken', 'args' => []])->json())->toBe(['error' => 'Server Error']);
+        expect(callHost(['function' => 'Orders.broken', 'args' => []])->json())->toBe(['error' => 'Server Error', 'touchedSession' => false]);
     });
 
     it('and a refusal carries none either way: it is an answer, not a failure', function () {
