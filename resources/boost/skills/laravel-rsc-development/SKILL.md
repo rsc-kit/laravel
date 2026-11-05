@@ -805,6 +805,9 @@ naming what read.
   against the visitor's session), or a cookie on the answer sends it private.
 - A page that shows who is signed in is not one to keep. Leave `revalidate`
   off it.
+- An `rpc()` wrapped in `cache(fn, { key, revalidate, tags })` puts its tags
+  on the kept page as `Cache-Tag`, so a CDN that purges by tag can drop it
+  when one changes. `changed(tag)` does not purge the CDN by itself.
 
 ## Production
 
