@@ -66,6 +66,7 @@ dataset('what an agent must be told', [
     'an admin bulk action is given rows found as the visitor, after authorize' => ['bulkActions'],
     'export const revalidate = N lets a shared cache keep a page that read nothing of the visitor, and its rpc() calls reach Laravel as nobody' => ['export const revalidate'],
     'a route.ts POST/PUT/PATCH/DELETE from another site is 403 with no token; trustedOrigins names exceptions' => ['trustedOrigins'],
+    'a kept page carries the tags of the cache() answers it used as Cache-Tag' => ['Cache-Tag'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {
