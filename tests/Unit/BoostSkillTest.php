@@ -64,6 +64,8 @@ dataset('what an agent must be told', [
     'a backend leaves the same one-time message with Rsc::flash()' => ["Rsc::flash('"],
     'an admin relation is a select of another resource\'s rows, listed and checked as the visitor' => ["relation: 'categories'"],
     'an admin bulk action is given rows found as the visitor, after authorize' => ['bulkActions'],
+    'export const revalidate = N lets a shared cache keep a page that read nothing of the visitor, and its rpc() calls reach Laravel as nobody' => ['export const revalidate'],
+    'a route.ts POST/PUT/PATCH/DELETE from another site is 403 with no token; trustedOrigins names exceptions' => ['trustedOrigins'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {

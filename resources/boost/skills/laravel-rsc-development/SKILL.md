@@ -564,6 +564,13 @@ export function NewOrder() {
 - From a button rather than a form, use `useAction` from
   `@rsc-kit/core/useAction`: `execute`, `isPending`, `onSuccess`, `onError`
   and an `optimistic` option.
+- No CSRF token, no `@csrf`, no `csrf_token()` in an `rpc()` call. A form, an
+  action and Laravel 13 itself accept a same-origin post by the browser's
+  `Sec-Fetch-Site` header. A `POST`, `PUT`, `PATCH` or `DELETE` to a
+  `route.ts` that a browser sends from another site is answered 403 before the
+  handler runs; a webhook or a server sends neither header and is never
+  refused. Another origin that should post is named with
+  `rscKit({ trustedOrigins: ['https://admin.example.com'] })`.
 
 ## Admin Panels
 
@@ -781,6 +788,23 @@ drops the `Cookie` header, and `createTestApp` refuses to run while one is
 registered. Run `bun test --isolate`, since `mock.module` is process-wide. The
 test that matters is the one where the stub resolves `{ redirected }` and no
 success is shown.
+
+## Pages a Cache May Keep
+
+`export const revalidate = 60` in a page (or a layout; the smallest wins) lets a
+shared cache - a CDN in front - keep the page for that many seconds. It is
+still rendered per request at the renderer on every miss, and is sent public
+only when the render read nothing of the visitor; anything else sends it
+`private, no-store`, with a `Cache-Status` header naming why and a log line
+naming what read.
+
+- Its `rpc()` calls reach Laravel as nobody: no cookie, no `Authorization`,
+  and a cookie Laravel sets is dropped. `auth()->user()` is null there.
+- `cookies()`, `headers()`, `request()` or `connection()` anywhere in the
+  render, Laravel route middleware declared in its `middleware.ts` (it runs
+  against the visitor's session), or a cookie on the answer sends it private.
+- A page that shows who is signed in is not one to keep. Leave `revalidate`
+  off it.
 
 ## Production
 
