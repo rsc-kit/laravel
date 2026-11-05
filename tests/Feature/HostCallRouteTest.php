@@ -107,53 +107,6 @@ it('gives the function a session bound to the request, not nobody', function () 
         ->assertJson(['result' => ['bound' => true, 'who' => 'ramon']]);
 });
 
-describe('a call that touched the session', function () {
-    // What a page kept for everyone must not carry: its calls arrive with no
-    // cookie, StartSession mints a fresh token, and a copy holding it hands
-    // every visitor that one token - every form on it answers 419.
-    it('says so when its answer carries the session token', function () {
-        registerHostFunction('Forms.token', fn () => ['field' => csrf_field()->toHtml()]);
-
-        callHost(['function' => 'Forms.token', 'args' => []])
-            ->assertOk()
-            ->assertJson(['touchedSession' => true]);
-    });
-
-    it('says so when it wrote to the session, refused or not', function () {
-        registerHostFunction('Cart.add', function () {
-            session()->put('cart', [1]);
-
-            throw new AuthenticationException;
-        });
-
-        callHost(['function' => 'Cart.add', 'args' => []])
-            ->assertStatus(401)
-            ->assertJson(['touchedSession' => true]);
-    });
-
-    it('says nothing for a call that only read it, or never looked', function () {
-        registerHostFunction('Me.who', fn () => ['who' => auth()->id()]);
-        registerHostFunction('Orders.recent', fn () => [1, 2]);
-
-        // False, not absent: a reply that does not say is read as one that did.
-        expect(callHost(['function' => 'Me.who', 'args' => []])->json('touchedSession'))->toBeFalse()
-            ->and(callHost(['function' => 'Orders.recent', 'args' => []])->json('touchedSession'))->toBeFalse();
-    });
-
-    it('marks each call in a batch on its own', function () {
-        registerHostFunction('Forms.token', fn () => csrf_token());
-        registerHostFunction('Orders.recent', fn () => [1, 2]);
-
-        $lines = collect(explode("\n", trim(callHost(['calls' => [
-            ['function' => 'Orders.recent', 'args' => []],
-            ['function' => 'Forms.token', 'args' => []],
-        ]])->streamedContent())))->map(fn ($line) => json_decode($line, true))->keyBy('index');
-
-        expect($lines[0]['touchedSession'] ?? null)->toBeFalse()
-            ->and($lines[1]['touchedSession'] ?? null)->toBeTrue();
-    });
-});
-
 it('answers an unknown function with 404 and names it', function () {
     $response = callHost(['function' => 'Nope.missing', 'args' => []]);
 
@@ -260,7 +213,7 @@ it('answers a result it cannot encode as a failure in the contract\'s own shape'
     $response = callHost(['function' => 'Stats.ratio', 'args' => []]);
 
     $response->assertStatus(500);
-    expect($response->json())->toBe(['error' => 'Server Error', 'touchedSession' => false]);
+    expect($response->json())->toBe(['error' => 'Server Error']);
 });
 
 it('closes every buffer between a batch line and the socket', function () {
@@ -332,7 +285,7 @@ describe('a failure under app.debug', function () {
         config()->set('app.debug', false);
         registerHostFunction('Orders.broken', fn () => throw new RuntimeException('boom'));
 
-        expect(callHost(['function' => 'Orders.broken', 'args' => []])->json())->toBe(['error' => 'Server Error', 'touchedSession' => false]);
+        expect(callHost(['function' => 'Orders.broken', 'args' => []])->json())->toBe(['error' => 'Server Error']);
     });
 
     it('and a refusal carries none either way: it is an answer, not a failure', function () {
