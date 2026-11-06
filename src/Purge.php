@@ -24,7 +24,7 @@ use function Illuminate\Support\defer;
  * defer(), so a slow edge never holds up the request that made the change.
  * Every name changed during one request goes out as one purge. A purge that
  * fails is logged and never fails the change: the edge still drops its copy
- * at s-maxage.
+ * at its max-age in CDN-Cache-Control.
  */
 class Purge
 {
@@ -82,7 +82,7 @@ class Purge
         try {
             $response = Http::asJson()->timeout(5)->post((string) $this->url, $body);
         } catch (Throwable $e) {
-            Log::warning('rsc-kit: purging the CDN failed; its copy is dropped at s-maxage instead: '.$e->getMessage());
+            Log::warning('rsc-kit: purging the CDN failed; its copy is dropped at CDN-Cache-Control\'s max-age instead: '.$e->getMessage());
 
             return;
         }
@@ -100,6 +100,6 @@ class Purge
             return;
         }
 
-        Log::warning("rsc-kit: the CDN answered {$response->status()} to a purge; its copy is dropped at s-maxage instead.", $body);
+        Log::warning("rsc-kit: the CDN answered {$response->status()} to a purge; its copy is dropped at CDN-Cache-Control's max-age instead.", $body);
     }
 }

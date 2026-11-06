@@ -121,7 +121,7 @@ return [
      * Where Rsc::changed() posts a purge, so a CDN keeping pages tagged with
      * the names that changed drops them: {"tags": [...]}, after the
      * transaction commits and the answer has gone. Homeport sets it; null
-     * purges nothing, and a CDN's copy lives out its s-maxage.
+     * purges nothing, and a CDN's copy lives out its max-age in CDN-Cache-Control.
      */
     'purge_url' => env('HOMEPORT_PURGE_URL'),
 ];
