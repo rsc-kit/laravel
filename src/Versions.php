@@ -94,6 +94,10 @@ class Versions
             $this->changedInCache($names);
         }
 
+        // A CDN keeping pages tagged with these names drops them, once the
+        // write commits and the answer has gone.
+        app(Purge::class)->later($names);
+
         // Wake the renderers listening on the broadcast, after the write -
         // and, inside a transaction, after it commits.
         if ($this->broadcast) {

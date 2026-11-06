@@ -76,6 +76,9 @@ class RscKitServiceProvider extends ServiceProvider
             (string) config('rsc.broadcast_channel', 'rsc-versions'),
         ));
 
+        // Tells the CDN keeping pages that a name changed; see Purge.
+        $this->app->singleton(Purge::class, fn () => new Purge(config('rsc.purge_url')));
+
         $this->app->singleton(CallableRegistry::class, function ($app) {
             $registry = new CallableRegistry($app);
 
