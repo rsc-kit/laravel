@@ -376,9 +376,12 @@ import { ordersCancel } from '../../server-actions.generated'
   page under it. Give it its own `<Suspense>` when it reads `params`, pass
   `params` through, and mark the active tab with `usePathname()`, not a
   refresh.
-- A redirect from an action renders the destination fresh, so a cookie or
-  membership the action changed is already reflected. No revalidate needed
-  before it.
+- A redirect from an action keeps the layouts as they were, like a link -
+  right for save-then-list. When the action changed what a layout reads (a
+  team switch, a sign-in, a count in the sidebar), call
+  `Rsc::revalidate('all')` before the redirect, so the destination comes back
+  whole, layouts included (`revalidate('all') before` the `redirect()` in a
+  JS action). Without it the page is new and the sidebar stale until a reload.
 - A call to a generated stub that was redirected (an `RscRedirectException`,
   or a guard sending an expired session to `/login`) resolves with
   `{ redirected }`, not the method's return value; the stub is typed
@@ -574,13 +577,17 @@ export function NewOrder() {
 
 ## Admin Panels
 
-`@rsc-kit/admin` draws a shadcn admin panel (sidebar, data table, forms,
-dialogs) from resources. It needs Tailwind v4 and shadcn. The panel runs in the
-renderer; Laravel keeps the data, the rules and who may see it.
+`@rsc-kit/press` builds an admin panel from resources, and a theme draws it:
+`shadcn` from `@rsc-kit/press/shadcn` (sidebar, data table, forms, dialogs).
+There is no `@rsc-kit/admin` any more - do not import it. It needs Tailwind v4
+and shadcn, and the app's stylesheet imports the theme after them:
+`@import "@rsc-kit/press/shadcn.css";` - without it the panel is unstyled. The
+panel runs in the renderer; Laravel keeps the data, the rules and who may see
+it.
 
 ```ts
 // resources/js/admin/resources/products.ts
-import { defineResource, type DataSource } from '@rsc-kit/admin'
+import { defineResource, type DataSource } from '@rsc-kit/press'
 import * as z from 'zod'
 
 const form = z.object({ name: z.string().min(2), sku: z.string(), price: z.number().min(0) })
@@ -638,7 +645,24 @@ public function update(UpdateProduct $request): Product
 - `tenancy: { tenants, current, switch }` adds a team switcher. `current` reads
   the session, the panel refuses one that is not in `tenants()`, and `switch`
   runs in an action, so `rpc('Teams.switch', id)` may write the session.
-- Mount it with seven files under `resources/js/app/admin/`. The section must
+- The panel is `definePanel` from `@rsc-kit/press/admin`, with the theme:
+
+```ts
+// resources/js/admin/panel.ts
+import { definePanel } from '@rsc-kit/press/admin'
+import { shadcn } from '@rsc-kit/press/shadcn'
+
+export const panel = definePanel({
+  path: '/admin',
+  theme: shadcn,                       // { ...shadcn, Dashboard: Mine } replaces one page
+  resources: [products],
+  authorize: () => rpc<boolean>('Admin.allowed'),
+})
+```
+
+- Mount it with seven files under `resources/js/app/admin/`
+  (`resourceParams`, `recordParams` and `listSearch` come from
+  `@rsc-kit/press/admin`). The section must
   be named `admin-table.section.tsx`, because a delete refreshes it by that name:
 
 ```
@@ -675,8 +699,66 @@ page.tsx                           export default panel.Dashboard
   `run` gets rows found as the visitor, after `authorize`; `destructive: true`
   asks first.
 - A plugin (`definePlugin`) adds resources and an `onChange` that runs after a
-  write and never fails it. Publish one with `@rsc-kit/admin` as a peer and the
+  write and never fails it. Publish one with `@rsc-kit/press` as a peer and the
   `rsc-kit-admin-plugin` keyword.
+
+## Public Forms, Pages and Uploads
+
+The rest of `@rsc-kit/press`, drawn by the same theme.
+
+**A public form** (contact, sign-up) is `defineForm` from
+`@rsc-kit/press/forms`, placed as `<contact.Form />` in a page that stays
+static - no `connection()`, no Suspense for it:
+
+```ts
+// resources/js/forms/contact.ts
+import * as z from 'zod'
+import { defineForm } from '@rsc-kit/press/forms'
+import { shadcn } from '@rsc-kit/press/shadcn'
+
+export const contact = defineForm({
+  name: 'contact',
+  form: z.object({ name: z.string().min(2), email: z.email(), message: z.string().min(10) }),
+  fields: { message: { type: 'textarea' } },
+  theme: shadcn,
+  done: 'Thanks - we will be in touch.',  // or redirect: '/thanks', never both
+  handle: (values) => rpc('Contact.send', values),
+})
+```
+
+- The schema is checked in the browser and again on the server; a 422 from
+  the FormRequest lands under the same fields, uncaught.
+- Every form carries a hidden `homepage` field as a bot trap: filled in, the
+  submission is answered as a success and dropped, and `handle` never runs.
+  So no field may be named `homepage`. It is not a CAPTCHA - add
+  `throttle` to a form worth attacking.
+
+**Pages an editor builds** are `definePages` from `@rsc-kit/press/pages`, made
+of `defineBlock` blocks (a schema and a server component each) and served by
+one catch-all:
+
+```
+resources/js/app/[...path]/page.tsx       <site.Page params={params} />, generateMetadata = site.generateMetadata
+resources/js/app/[...path]/middleware.ts  export default site.middleware
+```
+
+- `site.middleware` is required: without it a draft or a typo answers 200
+  under the page's shell instead of 404.
+- Add `site.resource` to `definePanel`'s resources. The source's rows are
+  `{ id, title, slug, description?, published, blocks }` with `blocks` a JSON
+  column; its `list` is asked for `filters: { slug }` and must honour it -
+  filter the column in PHP.
+- A looked-up page is kept with `cache()` for 60 seconds. A save in the panel
+  calls `changed('press:pages')`; a write straight to the database shows on
+  expiry, or at once after `Rsc::changed('press:pages')`.
+
+**Uploads**: `fields: { photo: { type: 'image', storage, maxSize } }` on a
+`z.url()` property (`type: 'file'` with `accept: '.pdf'` for documents), in a
+resource, a block or a public form. `storage` is
+`{ put(file, { field, tenant }) => Promise<string> }`; the string is what the
+record saves. Press ships none: write to the bucket your Laravel disk reads,
+since `rpc()` carries JSON and Laravel gets the url, not the file. Uploads are
+stored only after the rest of the form passes.
 
 ## Environment
 
@@ -818,7 +900,9 @@ The renderer keeps a public one itself - ISR, with or without a CDN:
   off it.
 - An `rpc()` wrapped in `cache(fn, { key, revalidate, tags })` puts its tags
   on the kept page as `Cache-Tag`, so a CDN that purges by tag can drop it
-  when one changes. `Rsc::changed()` does not purge a CDN's copy by itself.
+  when one changes. On Homeport (`HOMEPORT_PURGE_URL` set),
+  `Rsc::changed()` posts that purge itself, after the transaction commits
+  and the response has gone. Call it after the write, never before.
 
 ## Production
 
