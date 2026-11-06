@@ -77,6 +77,7 @@ dataset('what an agent must be told', [
     'a pages source list() must honour filters: { slug }' => ['filters: { slug }'],
     "a press page is kept between requests and a panel save calls changed('press:pages')" => ["changed('press:pages')"],
     'an upload field is { type: \'image\' | \'file\', storage } and put answers the url the record saves' => ["type: 'image'"],
+    'Rsc::changed() purges Homeport\'s edge when HOMEPORT_PURGE_URL is set' => ['HOMEPORT_PURGE_URL'],
     'the renderer keeps a public revalidate page itself, serves it stale while one render replaces it, and Rsc::changed() makes it render on every instance' => ['X-RSC-Kit: cached'],
 ]);
 

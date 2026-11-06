@@ -900,7 +900,9 @@ The renderer keeps a public one itself - ISR, with or without a CDN:
   off it.
 - An `rpc()` wrapped in `cache(fn, { key, revalidate, tags })` puts its tags
   on the kept page as `Cache-Tag`, so a CDN that purges by tag can drop it
-  when one changes. `Rsc::changed()` does not purge a CDN's copy by itself.
+  when one changes. On Homeport (`HOMEPORT_PURGE_URL` set),
+  `Rsc::changed()` posts that purge itself, after the transaction commits
+  and the response has gone. Call it after the write, never before.
 
 ## Production
 
