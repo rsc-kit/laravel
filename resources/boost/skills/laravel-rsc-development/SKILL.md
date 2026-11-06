@@ -792,11 +792,22 @@ success is shown.
 ## Pages a Cache May Keep
 
 `export const revalidate = 60` in a page (or a layout; the smallest wins) lets a
-shared cache - a CDN in front - keep the page for that many seconds. It is
-still rendered per request at the renderer on every miss, and is sent public
-only when the render read nothing of the visitor; anything else sends it
+shared cache keep the page for that many seconds. It is sent public only when
+the render read nothing of the visitor; anything else sends it
 `private, no-store`, with a `Cache-Status` header naming why and a log line
 naming what read.
+
+The renderer keeps a public one itself - ISR, with or without a CDN:
+
+- A repeat request is answered from the kept copy, `X-RSC-Kit: cached`,
+  without calling Laravel. Past `revalidate` the old copy goes out at once
+  and one render replaces it behind the visitor.
+- `Rsc::changed('posts')` makes the next request for any page that used a
+  `posts`-tagged `cache()` answer render fresh, on every renderer instance,
+  never stale. Laravel keeps the versions, so nothing more is installed for
+  several pods.
+- It is kept in `installCacheStore()`'s store (Redis) or 64 MB of the
+  renderer's memory. It is off in dev and with `pageCache: false`.
 
 - Its `rpc()` calls reach Laravel as nobody: no cookie, no `Authorization`,
   and a cookie Laravel sets is dropped. `auth()->user()` is null there.
@@ -807,7 +818,7 @@ naming what read.
   off it.
 - An `rpc()` wrapped in `cache(fn, { key, revalidate, tags })` puts its tags
   on the kept page as `Cache-Tag`, so a CDN that purges by tag can drop it
-  when one changes. `changed(tag)` does not purge the CDN by itself.
+  when one changes. `Rsc::changed()` does not purge a CDN's copy by itself.
 
 ## Production
 
