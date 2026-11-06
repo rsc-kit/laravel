@@ -12,3 +12,5 @@ env:
   # they share, not one per process.
   - CACHE_STORE=file
   - CACHE_DRIVER=file
+  # Where the conformance suite listens for purges (--purge-port 8790).
+  - HOMEPORT_PURGE_URL=http://127.0.0.1:8790/
