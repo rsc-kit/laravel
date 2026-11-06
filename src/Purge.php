@@ -31,6 +31,9 @@ class Purge
     /** Homeport takes at most this many tags per call. */
     public const LIMIT = 100;
 
+    /** The longest tag Homeport takes, in bytes. */
+    public const TAG_BYTES = 1024;
+
     /** @var array<string, true> */
     private array $pending = [];
 
@@ -63,7 +66,9 @@ class Purge
     /** Send what is pending now. */
     public function flush(): void
     {
-        $tags = array_keys($this->pending);
+        // array_keys, then cast: PHP makes a numeric tag an integer key. One too
+        // long would cost the whole call, and the edge keeps no page carrying it.
+        $tags = array_filter(array_map('strval', array_keys($this->pending)), fn (string $tag) => strlen($tag) <= self::TAG_BYTES);
         $this->pending = [];
 
         foreach (array_chunk($tags, self::LIMIT) as $chunk) {
@@ -82,7 +87,8 @@ class Purge
             return;
         }
 
-        if ($response->successful()) {
+        // Only a 202 means it was accepted.
+        if ($response->status() === 202) {
             return;
         }
 
