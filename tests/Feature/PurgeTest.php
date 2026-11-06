@@ -80,6 +80,23 @@ it('sends at most 100 tags a call', function () {
     Http::assertSentCount(3);
 });
 
+it('leaves out a tag too long to purge, so it cannot cost the rest of the call', function () {
+    Rsc::changed('posts', str_repeat('x', 1025), str_repeat('y', 1024));
+    answerSent();
+
+    Http::assertSent(fn (Request $request) => $request['tags'] === ['posts', str_repeat('y', 1024)]);
+});
+
+it('takes only a 202 as accepted', function () {
+    config()->set('rsc.purge_url', 'http://ok.test/');
+    app()->forgetInstance(Purge::class);
+    Http::fake(['ok.test/*' => Http::response(null, 200)]);
+    Log::shouldReceive('warning')->once();
+
+    Rsc::changed('posts');
+    answerSent();
+});
+
 it('never fails the change: a refused purge is logged', function () {
     // The first matching fake wins, so a host of its own.
     config()->set('rsc.purge_url', 'http://refusing.test/');
