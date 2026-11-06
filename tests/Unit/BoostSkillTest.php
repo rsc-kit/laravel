@@ -67,6 +67,16 @@ dataset('what an agent must be told', [
     'export const revalidate = N lets a shared cache keep a page that read nothing of the visitor, and its rpc() calls reach Laravel as nobody' => ['export const revalidate'],
     'a route.ts POST/PUT/PATCH/DELETE from another site is 403 with no token; trustedOrigins names exceptions' => ['trustedOrigins'],
     'a kept page carries the tags of the cache() answers it used as Cache-Tag' => ['Cache-Tag'],
+    'the admin panel is @rsc-kit/press: definePanel from /admin, drawn by a theme from /shadcn; @rsc-kit/admin is gone' => ['@rsc-kit/press/shadcn'],
+    'a panel theme is an object of components; spread shadcn to replace one page' => ['...shadcn'],
+    'a redirect from an action keeps the layouts unless Rsc::revalidate(\'all\') comes before it' => ["revalidate('all') before"],
+    'a public form is defineForm from @rsc-kit/press/forms, in a page that stays static' => ['defineForm'],
+    'a public form drops a submission whose homepage bot trap is filled' => ['homepage'],
+    'pages an editor builds are definePages from @rsc-kit/press/pages, served by one catch-all' => ['definePages'],
+    'a pages catch-all needs site.middleware, or a missing page answers 200' => ['site.middleware'],
+    'a pages source list() must honour filters: { slug }' => ['filters: { slug }'],
+    "a press page is kept between requests and a panel save calls changed('press:pages')" => ["changed('press:pages')"],
+    'an upload field is { type: \'image\' | \'file\', storage } and put answers the url the record saves' => ["type: 'image'"],
     'the renderer keeps a public revalidate page itself, serves it stale while one render replaces it, and Rsc::changed() makes it render on every instance' => ['X-RSC-Kit: cached'],
 ]);
 
