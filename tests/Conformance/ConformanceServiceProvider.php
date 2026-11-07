@@ -31,6 +31,10 @@ class ConformanceServiceProvider extends ServiceProvider
         $router->aliasMiddleware('conformance-allow', fn (Request $request, Closure $next) => $next($request));
         $router->aliasMiddleware('conformance-deny', fn () => abort(403, 'Not for you.'));
         $router->aliasMiddleware('conformance-redirect', fn () => redirect('/conformance-login'));
+        // The way any guard reads its page: the request it is handed, and its route.
+        $router->aliasMiddleware('conformance-page', fn (Request $request, Closure $next) => $request->path() === 'conformance/orders/7' && $request->route('order') === '7'
+            ? $next($request)
+            : abort(403, 'Not this page.'));
 
         $registry->register('Conformance.echo', fn (mixed $value): mixed => $value);
         $registry->register('Conformance.emptyList', fn (): array => []);
@@ -65,6 +69,7 @@ class ConformanceServiceProvider extends ServiceProvider
         });
         $registry->register('Conformance.authorization', fn (): ?string => request()->header('Authorization'));
         $registry->register('Conformance.cookie', fn (): ?string => request()->header('Cookie'));
+        $registry->register('Conformance.ip', fn (): ?string => request()->ip());
         $registry->register('Conformance.login', function (): string {
             Cookie::queue('conformance_login', '1');
 

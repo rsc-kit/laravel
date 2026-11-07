@@ -25,6 +25,8 @@ class HostCallController
             return new JsonResponse(['error' => 'Bad or missing host secret.'], 403);
         }
 
+        self::believeClientIp($request);
+
         // Decoded here rather than through $request->json(), which throws on
         // malformed input and would surface as a 500 — a caller sending
         // rubbish should be told it sent rubbish.
@@ -83,6 +85,35 @@ class HostCallController
         ['status' => $status, 'json' => $json] = $this->dispatcher->respond($body);
 
         return new JsonResponse($json, $status, [], 0, true);
+    }
+
+    /**
+     * Make `$request->ip()` the visitor's.
+     *
+     * The call comes from the renderer, so the address it arrives from is the
+     * renderer's and the same for every visitor: a throttle keyed on it was
+     * one bucket for everyone, and a sign-in limited to five attempts a
+     * minute was five for the whole site. The renderer sends the address its
+     * own server saw, and it is believed here only because the secret has
+     * just said who is sending it.
+     *
+     * The forwarded chain goes with it. Under trustProxies('*') the renderer
+     * is a trusted proxy and a chain would win over the address set here.
+     */
+    public static function believeClientIp(Request $request): void
+    {
+        $ip = trim((string) $request->header(HostCallDispatcher::CLIENT_IP_HEADER, ''));
+
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return;
+        }
+
+        $request->server->set('REMOTE_ADDR', $ip);
+
+        foreach (['X-Forwarded-For', 'Forwarded', 'X-Real-Ip'] as $name) {
+            $request->headers->remove($name);
+            $request->server->remove('HTTP_'.strtoupper(str_replace('-', '_', $name)));
+        }
     }
 
     /**

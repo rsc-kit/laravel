@@ -4,9 +4,12 @@ namespace RscKit;
 
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pipeline\Pipeline;
+use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Facade;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -15,9 +18,16 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  *
  * This is what route.php's middleware() and can() become once the engine owns
  * the route table. The names are ordinary Laravel middleware — aliases, groups
- * or class names — resolved and run through the real pipeline against the real
- * request, so `auth`, `verified`, `throttle:60,1` and `can:update,post` behave
- * exactly as they do on any other route.
+ * or class names — resolved and run through the real pipeline against the
+ * page's request, so `auth`, `verified`, `throttle:60,1`, `signed` and
+ * `can:update,post` behave exactly as they do on any other route.
+ *
+ * The page's request, not the call's: the call is a POST from the renderer to
+ * /__rsc/host-call, and run against that, `signed` checked the endpoint's url
+ * and refused every link, while `can:update,post` had no {post} to bind. The
+ * engine sends the page beside the names - its url and its params - and the
+ * middleware run against a request for it, with the call's session, user
+ * and visitor address.
  *
  * Returning true is the only way to allow. Everything else throws, and the
  * engine treats anything that is not a literal true as a refusal — so a
@@ -33,23 +43,29 @@ class RouteMiddleware
 
     /**
      * @param  list<string>  $names  middleware for this route, outermost first
+     * @param  array{url?: mixed, params?: mixed}|null  $page  the page they are about; null from an engine before 0.30.50
      *
      * @throws AuthenticationException
      * @throws RscRedirectException
      */
-    public function run(array $names): bool
+    public function run(array $names, ?array $page = null): bool
     {
         if ($names === []) {
             return true;
         }
 
         $router = $this->container->make(Router::class);
-        $request = $this->container->make('request');
+        $call = $this->container->make('request');
+        $request = is_string($page['url'] ?? null) ? $this->pageRequest($call, $router, $page) : $call;
 
         // Resolved through the router so an alias becomes the class it stands
         // for and a group becomes its members. Passing the alias itself to the
         // Pipeline gets a string it cannot instantiate.
         $resolved = $router->resolveMiddleware($names);
+
+        // The page's request is THE request while its middleware run, so a
+        // policy or a limiter reaching for request() finds the page too.
+        $this->swapRequest($request);
 
         try {
             self::through($this->container, $request, $resolved);
@@ -65,9 +81,71 @@ class RouteMiddleware
             }
 
             throw $e;
+        } finally {
+            $this->swapRequest($call);
         }
 
         return true;
+    }
+
+    /**
+     * A request for the page, carrying the call's visitor.
+     *
+     * The url the visitor asked for, as a GET, under the session, user and
+     * address the call arrived with; a route matching it with the params the
+     * engine matched, explicit bindings applied - `Route::model('invoice',
+     * Invoice::class)` - so `can:update,invoice` is handed the invoice. There
+     * is no controller to read an implicit binding's type from, so a param
+     * nothing binds stays the string it was, and a policy expecting a model
+     * refuses it.
+     *
+     * @param  array{url: string, params?: mixed}  $page
+     */
+    private function pageRequest(Request $call, Router $router, array $page): Request
+    {
+        $server = $call->server->all();
+
+        // Nothing of the call itself: its secret, its body, a forwarded host
+        // that would put the page somewhere it is not.
+        foreach (array_keys($server) as $key) {
+            if (str_starts_with($key, 'HTTP_X_RSC_') || str_starts_with($key, 'HTTP_X_FORWARDED_') || str_starts_with($key, 'CONTENT_') || $key === 'HTTP_CONTENT_TYPE' || $key === 'HTTP_CONTENT_LENGTH') {
+                unset($server[$key]);
+            }
+        }
+
+        $request = Request::create($page['url'], 'GET', [], $call->cookies->all(), [], $server);
+
+        if ($call->hasSession()) {
+            $request->setLaravelSession($call->session());
+        }
+
+        $request->setUserResolver($call->getUserResolver());
+
+        $route = new Route(['GET', 'HEAD'], $request->path(), fn () => null);
+        $route->setRouter($router)->setContainer($this->container);
+        $route->bind($request);
+
+        foreach (is_array($page['params'] ?? null) ? $page['params'] : [] as $name => $value) {
+            if (is_string($name) && is_string($value)) {
+                $route->setParameter($name, $value);
+            }
+        }
+
+        $request->setRouteResolver(fn () => $route);
+        $router->substituteBindings($route);
+
+        return $request;
+    }
+
+    /** Make this the container's request, and the facade's. */
+    private function swapRequest(Request $request): void
+    {
+        if ($this->container->make('request') === $request) {
+            return;
+        }
+
+        $this->container->instance('request', $request);
+        Facade::clearResolvedInstance('request');
     }
 
     /**

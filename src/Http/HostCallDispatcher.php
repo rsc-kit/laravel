@@ -33,6 +33,9 @@ class HostCallDispatcher
     /** The header the shared secret arrives on. */
     public const SECRET_HEADER = 'X-Rsc-Host-Secret';
 
+    /** The visitor's address, which the renderer's server saw and this call did not. */
+    public const CLIENT_IP_HEADER = 'X-Rsc-Client-Ip';
+
     /** The most calls one batch may carry: the engine's own BATCH_LIMIT. */
     public const BATCH_LIMIT = 50;
 
