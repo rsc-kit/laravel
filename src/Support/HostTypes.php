@@ -29,8 +29,9 @@ use UnitEnum;
  * PHP method, and a misspelt argument fails its typecheck.
  *
  * Only what PHP can say for certain. A parameter is positional, as the
- * registry calls it; a FormRequest in front is the call's one argument, its
- * fields read from rules(). A result is typed when it is a scalar, a backed
+ * registry calls it; a FormRequest in front is the call's first argument, its
+ * fields read from rules(), and any after it - a record's key - are typed as
+ * themselves. A result is typed when it is a scalar, a backed
  * enum, or a plain class whose public properties are what json_encode writes.
  * An array, a model, a collection - anything whose shape is decided at runtime
  * - is left open rather than guessed at.
@@ -137,10 +138,16 @@ class HostTypes
         $first = $params[0] ?? null;
         $firstType = $first?->getType();
 
-        // The call's one argument, validated by the request's rules.
+        // The call's first argument, validated by the request's rules.
         if ($firstType instanceof ReflectionNamedType && ! $firstType->isBuiltin()
             && is_subclass_of($firstType->getName(), FormRequest::class)) {
             $signature['params'][] = $this->formRequest($firstType->getName());
+
+            foreach (array_slice($params, 1) as $param) {
+                if (! $param->isVariadic()) {
+                    $signature['params'][] = $this->of($param->getType());
+                }
+            }
         } else {
             $optional = 0;
 
