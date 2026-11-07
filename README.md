@@ -163,6 +163,34 @@ Anything else is a failure: reported to Laravel's log and answered 500. With
 trace, and the renderer shows them under its own stack — so a failed `rpc()`
 points at the line of PHP that threw. Never in production.
 
+## Public forms
+
+A form anyone may fill in, such as a contact form or a sign-up, is drawn from a
+`FormRequest`, with no schema in TypeScript. Type-hint the request on a method
+under `app/Rsc`:
+
+```php
+class Contact
+{
+    public function send(SendContact $request): void
+    {
+        Message::create($request->validated());
+    }
+}
+```
+
+and name that method in `@rsc-kit/press`:
+
+```ts
+export const contact = defineForm({ name: 'contact', action: 'Contact.send', theme: shadcn })
+```
+
+The fields come from `rules()` in order. `required`, the type rules, `email`,
+`url`, `date`, `min`, `max`, `size`, `between` and `in` become the browser's
+checks. Everything else is Laravel's alone, and its 422 shows under the field.
+[Public forms on Laravel](https://docs.rsc-kit.dev/hosts/laravel/#public-forms)
+has the whole recipe.
+
 ## Commands
 
 | command | what it does |
