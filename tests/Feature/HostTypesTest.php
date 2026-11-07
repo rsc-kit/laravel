@@ -56,6 +56,9 @@ namespace Tests\Feature\HostTypesFixtures {
                 'slug' => ['string', 'regex:/^[a-z,]+$/'],
                 'tags' => 'array|min:1',
                 'check' => ['string', fn () => null],
+                'company' => 'required_if:plan,paid|string|min:2',
+                'reason' => ['nullable', 'required_if:plan,free,trial', 'string'],
+                'ghost' => 'required_if:missing,yes',
             ];
         }
     }
@@ -204,6 +207,16 @@ namespace {
             ->and($fields['tags']['type'])->toBe('array')
             ->and($fields['tags'])->not->toHaveKey('minLength')
             ->and($fields['check'])->toEqual(['type' => 'string']);
+    });
+
+    it('reads required_if as shown while the other field has one of its values, and required then', function () {
+        $contact = describeOrders()['types']['Orders.contact']['params'][0];
+        $fields = $contact['properties'];
+
+        expect($fields['company']['x-visible'])->toBe(['when' => 'plan', 'is' => ['paid'], 'required' => true])
+            ->and($fields['reason']['x-visible'])->toBe(['when' => 'plan', 'is' => ['free', 'trial'], 'required' => true])
+            ->and($fields['ghost'])->not->toHaveKey('x-visible')
+            ->and($contact['required'])->not->toContain('company');
     });
 
     it('leaves open what PHP cannot know, and says nothing for void', function () {

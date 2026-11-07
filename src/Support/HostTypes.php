@@ -365,6 +365,7 @@ class HostTypes
 
         $properties = [];
         $required = [];
+        $conditions = [];
 
         foreach ($rules as $field => $rule) {
             // A nested or wildcard rule (items.*.name) describes something
@@ -397,6 +398,23 @@ class HostTypes
 
             if (in_array('required', $names, true)) {
                 $required[] = $field;
+            }
+
+            foreach ($list as $r) {
+                if (str_starts_with(strtolower($r), 'required_if:')) {
+                    $conditions[$field] = str_getcsv(substr($r, 12), escape: '');
+                }
+            }
+        }
+
+        // required_if:topic,support asks for the field only while topic is
+        // support, so a form shows it then - and requires it when shown.
+        foreach ($conditions as $field => $arguments) {
+            $when = array_shift($arguments);
+            $values = $arguments;
+
+            if ($values !== [] && isset($properties[$when]) && $when !== $field) {
+                $properties[$field]['x-visible'] = ['when' => $when, 'is' => $values, 'required' => true];
             }
         }
 
