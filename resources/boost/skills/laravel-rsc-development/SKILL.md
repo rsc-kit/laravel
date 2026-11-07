@@ -712,24 +712,28 @@ static - no `connection()`, no Suspense for it:
 
 ```ts
 // resources/js/forms/contact.ts
-import * as z from 'zod'
 import { defineForm } from '@rsc-kit/press/forms'
 import { shadcn } from '@rsc-kit/press/shadcn'
 
 export const contact = defineForm({
   name: 'contact',
-  form: z.object({ name: z.string().min(2), email: z.email(), message: z.string().min(10) }),
+  action: 'Contact.send',
   fields: { message: { type: 'textarea' } },
   theme: shadcn,
   done: 'Thanks - we will be in touch.',  // or redirect: '/thanks', never both
-  handle: (values) => rpc('Contact.send', values),
 })
 ```
 
-- The schema is checked in the browser and again on the server; a 422 from
-  the FormRequest lands under the same fields, uncaught.
+- No zod schema and no `handle`: the fields and the browser's checks come from
+  the `FormRequest` on `Contact::send`, read at build time, and its 422 lands
+  under the same fields, uncaught. Do not repeat the rules in TypeScript.
+- `rules()` gives `required`, the types, `email`, `url`, `date`, `min`, `max`,
+  `size`, `between` and `in` or `Rule::in()`; anything else, such as `regex`
+  or `Rule::enum()`, stays the server's check alone.
+- A file field needs `form` and `handle`, as does a check in TypeScript first:
+  keep a schema, and `handle: (values) => rpc('Contact.send', values)`.
 - Every form carries a hidden `homepage` field as a bot trap: filled in, the
-  submission is answered as a success and dropped, and `handle` never runs.
+  submission is answered as a success and dropped, and nothing is called.
   So no field may be named `homepage`. It is not a CAPTCHA - add
   `throttle` to a form worth attacking.
 
