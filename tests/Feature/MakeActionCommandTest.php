@@ -118,3 +118,37 @@ it('an rpc class is in the manifest as a function, never as an action', function
 
     File::delete(base_path('rsc-host.json'));
 });
+
+it('writes a public form whole with --form: the request, the action taking it, and the form', function () {
+    File::delete(app_path('Http/Requests/SendContact.php'));
+    File::deleteDirectory(resource_path('js/forms'));
+
+    $this->artisan('make:rsc-action', ['name' => 'Contact', '--method' => ['send'], '--form' => true])
+        ->assertSuccessful();
+
+    expect(File::get(app_path('Rsc/Actions/Contact.php')))
+        ->toContain('use App\Http\Requests\SendContact;')
+        ->toContain('public function send(SendContact $request): void');
+
+    expect(File::get(app_path('Http/Requests/SendContact.php')))
+        ->toContain('namespace App\Http\Requests;')
+        ->toContain('class SendContact extends FormRequest')
+        ->toContain('return true;');
+
+    expect(File::get(resource_path('js/forms/contact.ts')))
+        ->toContain("import { contactSend } from '../server-actions.generated'")
+        ->toContain("name: 'contact',")
+        ->toContain('action: contactSend,');
+
+    expect(ActionManifest::discover())->toHaveKey('contactSend', 'Contact.send');
+
+    File::delete(app_path('Http/Requests/SendContact.php'));
+    File::deleteDirectory(resource_path('js/forms'));
+});
+
+it('refuses --form with more than one method, or for rpc', function () {
+    $this->artisan('make:rsc-action', ['name' => 'Contact', '--method' => ['send', 'other'], '--form' => true])->assertFailed();
+    $this->artisan('make:rsc-action', ['name' => 'Contact', '--rpc' => true, '--form' => true])->assertFailed();
+
+    expect(File::exists(app_path('Rsc/Actions/Contact.php')))->toBeFalse();
+});

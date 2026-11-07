@@ -16,6 +16,10 @@ use RscKit\RscKitServiceProvider;
  * is the guard that runs. Under app/Rsc/Actions by default - a server action
  * the build writes a "use server" stub for - or under app/Rsc with --rpc, a
  * class a server component reaches through rpc().
+ *
+ * --form is a public form whole: a FormRequest whose rules() are the form's
+ * fields, the action taking it, and resources/js/forms/<name>.ts handing the
+ * generated action to defineForm - the three files the Laravel guide shows.
  */
 class MakeActionCommand extends Command
 {
@@ -27,6 +31,7 @@ class MakeActionCommand extends Command
         {--can=* : A policy check, ability or ability,Model (#[Can])}
         {--middleware=* : A route middleware by name (#[Middleware])}
         {--revalidate= : What the action makes stale, a section or page name}
+        {--form : A public form: the action takes a FormRequest, which is written too, with the form in resources/js/forms}
         {--force : Overwrite the file if it exists}';
 
     protected $description = 'Make a class the renderer can call - a server action, or one for rpc()';
@@ -42,6 +47,15 @@ class MakeActionCommand extends Command
         $segments = array_map(fn (string $s) => Str::studly($s), explode('/', $name));
         $class = array_pop($segments);
         $rpc = (bool) $this->option('rpc');
+        $form = (bool) $this->option('form');
+
+        if ($form && ($rpc || count((array) $this->option('method')) > 1)) {
+            $this->components->error('A form posts to one action: --form takes at most one --method, and not --rpc.');
+
+            return self::FAILURE;
+        }
+
+        $request = $form ? $this->requestClass($class) : null;
 
         $namespace = rtrim('App\\Rsc'.($rpc ? '' : '\\Actions').($segments ? '\\'.implode('\\', $segments) : ''), '\\');
         $directory = ($rpc ? app_path('Rsc') : app_path('Rsc/Actions')).($segments ? '/'.implode('/', $segments) : '');
@@ -54,7 +68,11 @@ class MakeActionCommand extends Command
         }
 
         $this->files->ensureDirectoryExists($directory);
-        $this->files->put($path, $this->render($namespace, $class, $rpc));
+        if ($request !== null) {
+            $this->writeRequest($request);
+        }
+
+        $this->files->put($path, $this->render($namespace, $class, $rpc, $request));
 
         $this->components->info(sprintf('%s [%s] created.', $rpc ? 'rpc class' : 'Server action', $path));
 
@@ -78,7 +96,11 @@ class MakeActionCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->line('  '.$this->stubExamples($class));
+        if ($request !== null) {
+            $this->writeForm($class);
+        } else {
+            $this->line('  '.$this->stubExamples($class));
+        }
 
         // The manifest is what the build reads and the "use server" stub is
         // generated from, so a class that is not in it does not exist to the
@@ -90,6 +112,11 @@ class MakeActionCommand extends Command
         // the class by name - unless the autoloader is classmap-authoritative,
         // as an optimised production dump is, in which case a class written a
         // moment ago is not in the map and discovery would skip it silently.
+        // The request too: its rules() are the form's fields in the manifest.
+        if ($request !== null && $this->files->exists($requestPath = app_path("Http/Requests/{$request}.php"))) {
+            require_once $requestPath;
+        }
+
         require_once $path;
 
         $this->call('rsc:host-manifest');
@@ -98,7 +125,7 @@ class MakeActionCommand extends Command
     }
 
     /** The class source. */
-    private function render(string $namespace, string $class, bool $rpc): string
+    private function render(string $namespace, string $class, bool $rpc, ?string $request = null): string
     {
         $methods = array_values(array_filter(array_map(
             fn ($m) => Str::camel((string) $m),
@@ -140,12 +167,16 @@ class MakeActionCommand extends Command
             $uses[] = 'RscKit\Rsc';
         }
 
+        if ($request !== null) {
+            $uses[] = "App\\Http\\Requests\\{$request}";
+        }
+
         $uses = array_unique($uses);
         sort($uses);
 
         $body = $invokable
-            ? $this->method('__invoke', $rpc, $revalidate)
-            : implode("\n\n", array_map(fn (string $m) => $this->method($m, $rpc, $revalidate), $methods));
+            ? $this->method('__invoke', $rpc, $revalidate, $request)
+            : implode("\n\n", array_map(fn (string $m) => $this->method($m, $rpc, $revalidate, $request), $methods));
 
         $doc = $rpc
             ? " * Reached from a server component as rpc('{$class}".($invokable ? "'" : ".method'").").\n *\n * Public methods are what the renderer can call; constructor injection works;\n * auth()->user() is the visitor the page is being rendered for."
@@ -162,8 +193,27 @@ class MakeActionCommand extends Command
             ."}\n";
     }
 
-    private function method(string $name, bool $rpc, ?string $revalidate): string
+    private function method(string $name, bool $rpc, ?string $revalidate, ?string $request = null): string
     {
+        if ($request !== null) {
+            // A form's action: the request is validated before it runs, and
+            // its 422 lands under the fields.
+            $lines = [
+                "    public function {$name}({$request} \$request): void",
+                '    {',
+                '        // $request->validated()',
+            ];
+
+            if ($revalidate !== null) {
+                $lines[] = '';
+                $lines[] = "        Rsc::revalidate('{$revalidate}');";
+            }
+
+            $lines[] = '    }';
+
+            return implode("\n", $lines);
+        }
+
         $lines = [
             "    public function {$name}(): mixed",
             '    {',
@@ -191,6 +241,96 @@ class MakeActionCommand extends Command
         }
 
         return implode(', ', array_map(fn (string $m) => "await rpc('{$class}.{$m}')", $methods));
+    }
+
+    /** SendContact for Contact --method=send, ContactRequest for an invokable Contact. */
+    private function requestClass(string $class): string
+    {
+        $method = ((array) $this->option('method'))[0] ?? null;
+
+        return $method === null ? "{$class}Request" : Str::studly((string) $method).$class;
+    }
+
+    /** The FormRequest, unless the app has one by that name already. */
+    private function writeRequest(string $request): void
+    {
+        $path = app_path("Http/Requests/{$request}.php");
+
+        if ($this->files->exists($path) && ! $this->option('force')) {
+            $this->components->warn("{$path} already exists; the action takes it as it is.");
+
+            return;
+        }
+
+        $this->files->ensureDirectoryExists(dirname($path));
+        $this->files->put($path, <<<PHP
+        <?php
+
+        namespace App\\Http\\Requests;
+
+        use Illuminate\\Foundation\\Http\\FormRequest;
+
+        /**
+         * The form's fields, in the order of rules(). required, the type rules,
+         * email, url, date, min, max, size, between and in become the browser's
+         * checks; every rule is Laravel's, and its 422 lands under the field.
+         */
+        class {$request} extends FormRequest
+        {
+            public function authorize(): bool
+            {
+                return true; // a public form: anyone may send it
+            }
+
+            /**
+             * @return array<string, mixed>
+             */
+            public function rules(): array
+            {
+                return [
+                    'name' => ['required', 'string', 'min:2'],
+                    'email' => ['required', 'email'],
+                ];
+            }
+        }
+
+        PHP);
+
+        $this->components->info("Form request [{$path}] created.");
+    }
+
+    /** resources/js/forms/<name>.ts, handing the generated action to defineForm. */
+    private function writeForm(string $class): void
+    {
+        $method = ((array) $this->option('method'))[0] ?? null;
+        $action = $method === null ? lcfirst($class) : lcfirst($class).ucfirst(Str::camel((string) $method));
+        $name = Str::kebab($class);
+        $export = Str::camel($class);
+        $path = resource_path("js/forms/{$name}.ts");
+
+        if ($this->files->exists($path) && ! $this->option('force')) {
+            $this->components->warn("{$path} already exists; it was left as it is.");
+
+            return;
+        }
+
+        $this->files->ensureDirectoryExists(dirname($path));
+        $this->files->put($path, <<<TS
+        import { defineForm } from '@rsc-kit/press/forms'
+        import { shadcn } from '@rsc-kit/press/shadcn'
+        import { {$action} } from '../server-actions.generated'
+
+        // The fields are the request's rules(), and every check is Laravel's.
+        // Place it in any page: <{$export}.Form />
+        export const {$export} = defineForm({
+          name: '{$name}',
+          action: {$action},
+          theme: shadcn,
+        })
+
+        TS);
+
+        $this->components->info("Form [{$path}] created. Place it in a page: <{$export}.Form />");
     }
 
     private function stubExamples(string $class): string
