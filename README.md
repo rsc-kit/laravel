@@ -109,6 +109,13 @@ renderer asks before anything at or below that route renders — a page frozen
 at build time included — and a refusal is the answer to the request. It fails
 closed: only a pipeline that reached its end lets the page render.
 
+They run against the page's request, not the host call's: its url, the
+route's parameters and the visitor's address. `signed` checks the link the
+visitor followed, `throttle` counts each visitor once per page load, and
+`can:update,post` is handed the `{post}` the route bound — through
+`Route::bind` or `Route::model`, since a page has no controller signature to
+bind implicitly from. Every host call makes `$request->ip()` the visitor's.
+
 A server action, with its guards:
 
 ```sh

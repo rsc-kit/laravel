@@ -98,7 +98,7 @@ class RscKitServiceProvider extends ServiceProvider
             // engine's own question and is not one of the app's functions.
             $registry->register(
                 RouteMiddleware::FUNCTION,
-                fn (array $names = []) => (new RouteMiddleware($app))->run($names),
+                fn (array $names = [], ?array $page = null) => (new RouteMiddleware($app))->run($names, $page),
             );
 
             // And the one it asks tag versions on.
