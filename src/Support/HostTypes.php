@@ -19,6 +19,7 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionType;
 use ReflectionUnionType;
+use Stringable;
 use Throwable;
 use UnitEnum;
 
@@ -318,7 +319,11 @@ class HostTypes
                 continue;
             }
 
-            $list = is_string($rule) ? explode('|', $rule) : array_filter((array) $rule, 'is_string');
+            // Rule::in() is Stringable; a closure or a rule object says nothing.
+            $list = is_string($rule) ? explode('|', $rule) : array_map('strval', array_filter(
+                (array) $rule,
+                fn ($r) => is_string($r) || $r instanceof Stringable,
+            ));
             $names = array_map(fn (string $r) => strtolower(explode(':', $r)[0]), $list);
 
             $type = match (true) {
@@ -329,6 +334,8 @@ class HostTypes
                 in_array('file', $names, true) || in_array('image', $names, true) => [],
                 default => ['type' => 'string'],
             };
+
+            $type = $this->hints($type, $list);
 
             $properties[$field] = in_array('nullable', $names, true) && $type !== []
                 ? ['anyOf' => [$type, ['type' => 'null']]]
@@ -346,5 +353,48 @@ class HostTypes
             'properties' => (object) $properties,
             'required' => $required,
         ], fn ($v) => $v !== []);
+    }
+
+    /**
+     * What a form can tell the visitor before it is sent, read from the rules
+     * JSON Schema can say. Hints, never the check: the FormRequest still runs.
+     * `regex` is left out because a PCRE pattern is not a browser's.
+     *
+     * @param  array<string, mixed>  $type
+     * @param  array<int, string>  $rules
+     * @return array<string, mixed>
+     */
+    private function hints(array $type, array $rules): array
+    {
+        $kind = $type['type'] ?? null;
+        $number = $kind === 'integer' || $kind === 'number';
+
+        if (! $number && $kind !== 'string') {
+            return $type;
+        }
+
+        [$low, $high] = $number ? ['minimum', 'maximum'] : ['minLength', 'maxLength'];
+        $limit = fn (string $value) => is_numeric($value) ? $value + 0 : null;
+
+        foreach ($rules as $rule) {
+            [$name, $arguments] = explode(':', $rule, 2) + [1 => ''];
+            $values = str_getcsv($arguments, escape: '');
+
+            $hint = match (strtolower($name)) {
+                'min' => [$low => $limit($values[0])],
+                'max' => [$high => $limit($values[0])],
+                'size' => [$low => $limit($values[0]), $high => $limit($values[0])],
+                'between' => [$low => $limit($values[0]), $high => $limit($values[1] ?? '')],
+                'in' => ['enum' => $number ? array_map($limit, $values) : array_map('strval', $values)],
+                'email' => $kind === 'string' ? ['format' => 'email'] : [],
+                'url' => $kind === 'string' ? ['format' => 'uri'] : [],
+                'date' => $kind === 'string' ? ['format' => 'date'] : [],
+                default => [],
+            };
+
+            $type = [...$type, ...array_filter($hint, fn ($v) => $v !== null)];
+        }
+
+        return $type;
     }
 }

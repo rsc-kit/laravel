@@ -13,6 +13,8 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use ReflectionClass;
+use ReflectionFunction;
+use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
 use RscKit\Attributes\Authenticated;
@@ -135,13 +137,13 @@ class CallableRegistry
         $callable = $this->callables[$name];
 
         if ($callable instanceof Closure) {
-            return $callable(...$args);
+            return $callable(...$this->resolveFormRequest(new ReflectionFunction($callable), $args));
         }
 
         if (is_string($callable)) {
             $this->authorize($callable, '__invoke');
             $instance = $this->resolveInstance($callable);
-            $args = $this->resolveFormRequest($callable, '__invoke', $args);
+            $args = $this->resolveFormRequest(new ReflectionMethod($callable, '__invoke'), $args);
 
             return $instance(...$args);
         }
@@ -150,7 +152,7 @@ class CallableRegistry
             [$class, $method] = $callable;
             $this->authorize($class, $method);
             $instance = $this->resolveInstance($class);
-            $args = $this->resolveFormRequest($class, $method, $args);
+            $args = $this->resolveFormRequest(new ReflectionMethod($class, $method), $args);
 
             return $instance->{$method}(...$args);
         }
@@ -308,16 +310,15 @@ class CallableRegistry
     }
 
     /**
-     * If the method's first parameter type-hints a FormRequest, build one
+     * If the callable's first parameter type-hints a FormRequest, build one
      * from this call's args and validate it, as Laravel would on a route.
      *
      * @param  array<int|string, mixed>  $args
      * @return array<int, mixed>
      */
-    private function resolveFormRequest(string $class, string $method, array $args): array
+    private function resolveFormRequest(ReflectionFunctionAbstract $callable, array $args): array
     {
-        $refMethod = new ReflectionMethod($class, $method);
-        $params = $refMethod->getParameters();
+        $params = $callable->getParameters();
 
         if ($params === []) {
             return $args;
