@@ -4,6 +4,7 @@ namespace Tests\Feature\HostTypesFixtures {
     use Illuminate\Foundation\Http\FormRequest;
     use Illuminate\Support\Carbon;
     use Illuminate\Support\Collection;
+    use Illuminate\Validation\Rule;
 
     enum Status: string
     {
@@ -38,8 +39,31 @@ namespace Tests\Feature\HostTypesFixtures {
         }
     }
 
+    class SendContact extends FormRequest
+    {
+        public function rules(): array
+        {
+            return [
+                'email' => 'required|email|max:255',
+                'site' => 'nullable|url',
+                'born' => 'date',
+                'code' => 'string|size:6',
+                'seats' => 'integer|between:1,10',
+                'rating' => 'integer|in:1,2,3',
+                'price' => 'numeric|min:0.5',
+                'topic' => ['required', Rule::in(['sales', 'after hours'])],
+                'plan' => 'in:free,paid',
+                'slug' => ['string', 'regex:/^[a-z,]+$/'],
+                'tags' => 'array|min:1',
+                'check' => ['string', fn () => null],
+            ];
+        }
+    }
+
     class Orders
     {
+        public function contact(SendContact $request): void {}
+
         public function recent(int $limit = 5): Collection
         {
             return collect();
@@ -81,6 +105,7 @@ namespace {
             'Orders.find' => [Orders::class, 'find'],
             'Orders.tag' => [Orders::class, 'tag'],
             'Orders.store' => [Orders::class, 'store'],
+            'Orders.contact' => [Orders::class, 'contact'],
             'Orders.cancel' => [Orders::class, 'cancel'],
             'Orders.untyped' => [Orders::class, 'untyped'],
             'Inline.add' => fn (int $a, int $b): int => $a + $b,
@@ -125,11 +150,29 @@ namespace {
 
         $fields = $store['params'][0];
 
-        expect($fields['properties']['quantity'])->toBe(['type' => 'integer'])
+        expect($fields['properties']['quantity'])->toBe(['type' => 'integer', 'minimum' => 1])
             ->and($fields['properties']['gift'])->toBe(['type' => 'boolean'])
             ->and($fields['properties']['tags']['anyOf'][1])->toBe(['type' => 'null'])
             ->and($fields['properties'])->not->toHaveKey('tags.*')
             ->and($fields['required'])->toBe(['name', 'quantity']);
+    });
+
+    it('reads what a form can tell the visitor from the rules, and only that', function () {
+        $fields = describeOrders()['types']['Orders.contact']['params'][0]['properties'];
+
+        expect($fields['email'])->toEqual(['format' => 'email', 'maxLength' => 255, 'type' => 'string'])
+            ->and($fields['site']['anyOf'][0])->toEqual(['format' => 'uri', 'type' => 'string'])
+            ->and($fields['born'])->toEqual(['format' => 'date', 'type' => 'string'])
+            ->and($fields['code'])->toEqual(['minLength' => 6, 'maxLength' => 6, 'type' => 'string'])
+            ->and($fields['seats'])->toEqual(['minimum' => 1, 'maximum' => 10, 'type' => 'integer'])
+            ->and($fields['rating'])->toEqual(['enum' => [1, 2, 3], 'type' => 'integer'])
+            ->and($fields['price'])->toEqual(['minimum' => 0.5, 'type' => 'number'])
+            ->and($fields['topic'])->toEqual(['enum' => ['sales', 'after hours'], 'type' => 'string'])
+            ->and($fields['plan'])->toEqual(['enum' => ['free', 'paid'], 'type' => 'string'])
+            ->and($fields['slug'])->toEqual(['type' => 'string'])
+            ->and($fields['tags']['type'])->toBe('array')
+            ->and($fields['tags'])->not->toHaveKey('minLength')
+            ->and($fields['check'])->toEqual(['type' => 'string']);
     });
 
     it('leaves open what PHP cannot know, and says nothing for void', function () {
