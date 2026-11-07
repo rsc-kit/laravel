@@ -760,12 +760,13 @@ page.tsx                           export default panel.Dashboard
   write and never fails it. Publish one with `@rsc-kit/press` as a peer and the
   `rsc-kit-admin-plugin` keyword.
 
-## Public Forms, Pages and Uploads
+## Forms, Pages and Uploads
 
 The rest of `@rsc-kit/press`, drawn by the same theme.
 
-**A public form** (contact, sign-up) is `defineForm` from
-`@rsc-kit/press/forms`, placed as `<contact.Form />` in a page that stays
+**A form** (contact, sign-up, an edit page, an admin resource's form) is a
+blueprint: `defineBlueprint` from `@rsc-kit/press/forms` (0.30.52; it was
+`defineForm`, which is gone), placed as `<contact.Form />` in a page that stays
 static - no `connection()`, no Suspense for it. `php artisan make:rsc-action
 Contact --method=send --form` writes it whole: `App\Http\Requests\SendContact`,
 `app/Rsc/Actions/Contact.php` with `send(SendContact $request)`, and this file
@@ -773,20 +774,21 @@ Contact --method=send --form` writes it whole: `App\Http\Requests\SendContact`,
 
 ```ts
 // resources/js/forms/contact.ts
-import { defineForm } from '@rsc-kit/press/forms'
+import { defineBlueprint } from '@rsc-kit/press/forms'
 import { shadcn } from '@rsc-kit/press/shadcn'
 import { contactSend } from '../server-actions.generated'
 
-export const contact = defineForm({
+export const contact = defineBlueprint({
   name: 'contact',
-  action: contactSend,
+  actions: { create: contactSend },
   fields: { message: { type: 'textarea' } },
   theme: shadcn,
   done: 'Thanks - we will be in touch.',  // or redirect: '/thanks', never both
 })
 ```
 
-- `action` is the generated action, never a string (`'Contact.send'` throws).
+- `actions` is `{ create, update }`, either or both, each the generated
+  action, never a string (`'Contact.send'` throws).
   So the class is in `app/Rsc/Actions`: one in `app/Rsc` is rpc only and has
   no generated action.
 - No zod schema and no `handle`: the fields and the browser's checks come from
@@ -797,6 +799,20 @@ export const contact = defineForm({
   or `Rule::enum()`, stays the server's check alone.
 - A file field needs `form` and `handle`, as does a check in TypeScript first:
   keep a schema, and `handle: (values) => contactSend(values)`.
+- With `update`, `<profile.Form id={user.id} values={user} />` edits that
+  record: `update(UpdateProfile $request, string $user)` gets the key after the
+  request. The key comes back from the browser, so `authorize()` must check
+  the visitor may change that record. Only the form's fields of `values` reach
+  the page.
+- The same blueprint is an admin resource's form: `defineResource({ ...,
+  form: profile })`, saving with its actions; the source then needs only
+  `list`, `find` and `delete`.
+- A field can depend on another: `fields: { company: { visible: { when:
+  'topic', is: 'sales' } } }` shows it only while topic is sales (`not` turns it
+  round), and `fields: { slug: { from: { field: 'name' } } }` fills a slug as
+  the name is typed, until it is edited. A hidden field is not sent. A
+  `required_if:topic,sales` rule is read as `visible`, required when shown
+  (rsc-kit/laravel 0.20) - so write the rule, not the override.
 - Every form carries a hidden `homepage` field as a bot trap: filled in, the
   submission is answered as a success and dropped, and nothing is called.
   So no field may be named `homepage`. It is not a CAPTCHA - add
