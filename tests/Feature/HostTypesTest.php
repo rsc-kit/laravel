@@ -96,6 +96,8 @@ namespace Tests\Feature\HostTypesFixtures {
 }
 
 namespace {
+    use Illuminate\Contracts\Pagination\CursorPaginator;
+    use Illuminate\Pagination\LengthAwarePaginator;
     use Illuminate\Support\Facades\Artisan;
     use RscKit\Support\HostTypes;
     use Tests\Feature\HostTypesFixtures\Orders;
@@ -112,6 +114,8 @@ namespace {
             'Orders.update' => [Orders::class, 'update'],
             'Orders.untyped' => [Orders::class, 'untyped'],
             'Inline.add' => fn (int $a, int $b): int => $a + $b,
+            'Pages.byCursor' => fn (): CursorPaginator => throw new LogicException,
+            'Pages.counted' => fn (): LengthAwarePaginator => throw new LogicException,
         ])), true);
     }
 
@@ -126,6 +130,21 @@ namespace {
         expect($types['Orders.find']['optional'])->toBe(1)
             ->and($types['Orders.tag']['rest'])->toBe(['type' => 'string'])
             ->and($types['Orders.tag']['params'])->toBe([['type' => 'string']]);
+    });
+
+    it('types a page as it encodes: next_cursor by cursor, total when counted', function () {
+        $types = describeOrders()['types'];
+        $byCursor = $types['Pages.byCursor']['result'];
+        $counted = $types['Pages.counted']['result'];
+
+        expect($byCursor['properties']['data'])->toBe(['type' => 'array', 'items' => []])
+            ->and($byCursor['properties']['next_cursor'])->toBe(['anyOf' => [['type' => 'string'], ['type' => 'null']]])
+            ->and($byCursor['properties'])->not->toHaveKey('total')
+            ->and($byCursor['required'])->toContain('data', 'next_cursor', 'prev_cursor');
+
+        expect($counted['properties']['total'])->toBe(['type' => 'integer'])
+            ->and($counted['properties'])->not->toHaveKey('next_cursor')
+            ->and($counted['required'])->toContain('data', 'total', 'last_page');
     });
 
     it('types the arguments after a FormRequest as themselves: a panel\'s update takes the record\'s key', function () {
