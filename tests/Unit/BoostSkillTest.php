@@ -58,7 +58,6 @@ dataset('what an agent must be told', [
     'an admin form is checked by the browser first, and the server still checks every save' => ['Checked in the browser first'],
     'the admin theme follows the system, and the root <html> needs suppressHydrationWarning' => ['suppressHydrationWarning'],
     'a Laravel 422 from an admin source shows under the form\'s fields, uncaught' => ['Nothing to catch'],
-    'a FormRequest callable receives the request alone, so an admin update sends its id in the values' => ['no argument after it'],
     'a section is named by its file, and a different section() name fails the build' => ['name it after its file'],
     'a one-time message survives a redirect: Rsc::flash() in the action, useFlash() in the root layout' => ['useFlash'],
     'a backend leaves the same one-time message with Rsc::flash()' => ["Rsc::flash('"],
@@ -85,6 +84,8 @@ dataset('what an agent must be told', [
     'a public revalidate page also sends CDN-Cache-Control, which Homeport\'s edge caches on and strips' => ['CDN-Cache-Control'],
     'a route middleware runs against the page it guards, so signed, can: with an explicit binding and a per-visitor throttle work' => ["against the page's request", 'Route::model('],
     'every host call carries the visitor\'s address, so a throttle counts per visitor' => ['X-Rsc-Client-Ip', 'RSC_TRUST_FORWARDED=1'],
+    'an admin resource takes the generated actions in place of a schema, update taking the key as the FormRequest\'s route parameter' => ['ignore($this->route(\'product\'))', 'actions: { create: productsStore, update: productsUpdate }'],
+    'an admin list pages by count or by cursor, cursorPaginate typed as it encodes' => ['cursorPaginate', '{ rows, next, prev }'],
     'the renderer keeps a public revalidate page itself, serves it stale while one render replaces it, and Rsc::changed() makes it render on every instance' => ['X-RSC-Kit: cached'],
 ]);
 
