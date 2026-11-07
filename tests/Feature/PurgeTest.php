@@ -1,12 +1,15 @@
 <?php
 
 use Illuminate\Http\Client\Request;
+use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Defer\DeferredCallbackCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use RscKit\Purge;
+use RscKit\RetryPurge;
 use RscKit\Rsc;
 
 /**
@@ -19,6 +22,14 @@ beforeEach(function () {
     app()->forgetInstance(Purge::class);
     Http::fake(['purge.test/*' => Http::response(null, 202)]);
 });
+
+/** The first matching fake wins, so a purge answered by a host of its own. */
+function purgeAnsweredBy(mixed $answer): void
+{
+    config()->set('rsc.purge_url', 'http://limited.test/');
+    app()->forgetInstance(Purge::class);
+    Http::fake(['limited.test/*' => $answer]);
+}
 
 /** What the request's deferred work would run once the answer has gone. */
 function answerSent(): void
@@ -106,4 +117,74 @@ it('never fails the change: a refused purge is logged', function () {
 
     Rsc::changed('posts');
     answerSent();
+});
+
+it('queues the one retry of a 429, delayed by its Retry-After, rather than waiting', function () {
+    Queue::fake();
+    purgeAnsweredBy(Http::response(null, 429, ['Retry-After' => '3']));
+
+    Rsc::changed('posts');
+    $started = microtime(true);
+    answerSent();
+
+    expect(microtime(true) - $started)->toBeLessThan(0.5);
+    Http::assertSentCount(1);
+    Queue::assertPushed(RetryPurge::class, fn (RetryPurge $job) => $job->body['tags'] === ['posts'] && $job->tries === 1);
+});
+
+it('caps the delay of a queued retry at five seconds', function () {
+    $queue = Mockery::mock(Illuminate\Contracts\Queue\Queue::class);
+    $queue->shouldReceive('later')->once()->with(5, Mockery::type(RetryPurge::class));
+    Queue::shouldReceive('connection')->andReturn($queue);
+    purgeAnsweredBy(Http::response(null, 429, ['Retry-After' => '3600']));
+
+    Rsc::changed('posts');
+    answerSent();
+
+    Http::assertSentCount(1);
+});
+
+it('logs a 429 on the retry and queues nothing more', function () {
+    Queue::fake();
+    Log::spy();
+    purgeAnsweredBy(Http::response(null, 429));
+
+    (new RetryPurge(['tags' => ['posts']]))->handle(app(Purge::class));
+
+    Http::assertSentCount(1);
+    Queue::assertNothingPushed();
+    Log::shouldHaveReceived('warning')->once();
+});
+
+it('accepts the purge when the queued retry is answered 202', function () {
+    Log::spy();
+
+    (new RetryPurge(['tags' => ['posts']]))->handle(app(Purge::class));
+
+    Http::assertSentCount(1);
+    Log::shouldNotHaveReceived('warning');
+});
+
+it('waits and retries in place on a queue that cannot delay a job', function () {
+    Queue::shouldReceive('connection')->andReturn(new SyncQueue);
+    purgeAnsweredBy(Http::sequence()->push(null, 429, ['Retry-After' => '1'])->push(null, 202));
+
+    Rsc::changed('posts');
+    $started = microtime(true);
+    answerSent();
+
+    expect(microtime(true) - $started)->toBeGreaterThanOrEqual(1.0);
+    Http::assertSentCount(2);
+});
+
+it('waits and retries in place when the queue is down', function () {
+    $queue = Mockery::mock(Illuminate\Contracts\Queue\Queue::class);
+    $queue->shouldReceive('later')->once()->andThrow(new RuntimeException('down'));
+    Queue::shouldReceive('connection')->andReturn($queue);
+    purgeAnsweredBy(Http::sequence()->push(null, 429, ['Retry-After' => '1'])->push(null, 202));
+
+    Rsc::changed('posts');
+    answerSent();
+
+    Http::assertSentCount(2);
 });

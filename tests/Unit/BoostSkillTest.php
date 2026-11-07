@@ -78,6 +78,8 @@ dataset('what an agent must be told', [
     "a press page is kept between requests and a panel save calls changed('press:pages')" => ["changed('press:pages')"],
     'an upload field is { type: \'image\' | \'file\', storage } and put answers the url the record saves' => ["type: 'image'"],
     'Rsc::changed() purges Homeport\'s edge when HOMEPORT_PURGE_URL is set' => ['HOMEPORT_PURGE_URL'],
+    'whether the edge answered is hit in its own Cache-Status entry' => ['its own entry in `Cache-Status`'],
+    'a purge answered 429 is retried by a queued job, or in place on a sync queue' => ['RetryPurge'],
     'a public revalidate page also sends CDN-Cache-Control, which Homeport\'s edge caches on and strips' => ['CDN-Cache-Control'],
     'the renderer keeps a public revalidate page itself, serves it stale while one render replaces it, and Rsc::changed() makes it render on every instance' => ['X-RSC-Kit: cached'],
 ]);
