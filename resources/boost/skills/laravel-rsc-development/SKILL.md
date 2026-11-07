@@ -309,6 +309,14 @@ build stored:
 export const middleware = ['auth', 'verified', 'can:update,post']
 ```
 
+They run against the page's request, not the host call's: its url, the
+route's parameters, and the visitor's address. So `signed` checks the link the
+visitor followed, `throttle:5,1` counts each visitor once per page load, and
+`request()` in a middleware is the page. `can:update,post` is handed the
+`{post}` the route bound only through an explicit binding, since a page has no
+controller signature to bind implicitly from - register
+`Route::model('post', Post::class)` (or `Route::bind`) in a service provider.
+
 It fails closed: only a pipeline that reaches the end lets the page render. A
 middleware that aborts, redirects or errors refuses it. Never put an access
 check in a layout: a navigation skips layouts the browser already holds.
@@ -742,7 +750,9 @@ export const contact = defineForm({
 - Every form carries a hidden `homepage` field as a bot trap: filled in, the
   submission is answered as a success and dropped, and nothing is called.
   So no field may be named `homepage`. It is not a CAPTCHA - add
-  `throttle` to a form worth attacking.
+  `throttle` to a form worth attacking. Every host call carries the visitor's
+  address (`X-Rsc-Client-Ip`), so `$request->ip()` and a throttle are per
+  visitor; behind a load balancer set `RSC_TRUST_FORWARDED=1` on the renderer.
 
 **Pages an editor builds** are `definePages` from `@rsc-kit/press/pages`, made
 of `defineBlock` blocks (a schema and a server component each) and served by
