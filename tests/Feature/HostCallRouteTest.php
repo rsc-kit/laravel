@@ -295,3 +295,15 @@ describe('a failure under app.debug', function () {
         expect(callHost(['function' => 'Orders.denied', 'args' => []])->json())->not->toHaveKey('debug');
     });
 });
+
+it('builds a form request for a closure, as it does for a method', function () {
+    app(CallableRegistry::class)->register('Closures.store', fn (StoreOrderRequest $request): string => $request->validated('name'));
+
+    callHost(['function' => 'Closures.store', 'args' => [['name' => 'Ada']]])
+        ->assertOk()
+        ->assertJsonPath('result', 'Ada');
+
+    callHost(['function' => 'Closures.store', 'args' => [[]]])
+        ->assertStatus(422)
+        ->assertJsonStructure(['validationErrors' => ['name']]);
+});

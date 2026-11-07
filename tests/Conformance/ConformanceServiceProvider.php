@@ -44,6 +44,13 @@ class ConformanceServiceProvider extends ServiceProvider
             'blockers' => [['id' => 7, 'href' => '/orders/7']],
         ]));
         $registry->register('Conformance.invalid', fn () => throw ValidationException::withMessages(['name' => 'The name field is required.']));
+        $registry->register('Conformance.form', function (ConformanceForm $request): string {
+            if ($request->input('email') === 'taken@example.com') {
+                throw ValidationException::withMessages(['email' => 'That address is taken.']);
+            }
+
+            return $request->input('name');
+        });
         $registry->register('Conformance.redirect', fn () => throw new RscRedirectException('/login'));
         $registry->register('Conformance.revalidate', function (): string {
             Rsc::revalidate('orders');
