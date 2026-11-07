@@ -637,12 +637,62 @@ public function update(UpdateProduct $request): Product
   know (`Rule::unique('products', 'sku')->ignore($this->integer('id'))`)
   comes back as a 422, and its messages land under the same fields. Nothing to
   catch - let the `rpc()` call throw.
-- A FormRequest method receives the request alone - no argument after it - so
-  `update` sends the id inside the values, as above.
-- `list` is told `{ q, sort, dir, page, perPage, filters }`. Allowlist `sort`
-  before it reaches `orderBy`. A resource with `mode: 'client'` is listed once
-  with `perPage: null` and must return every row; the browser searches, sorts
-  and pages. `find` answering `null` is a 404.
+- With FormRequests already written, skip the schema: give the resource the
+  generated actions instead of `form` (never both), and the source keeps only
+  `list`, `find` and `delete`. The create form is drawn from `store`'s
+  FormRequest, the edit form from `update`'s, and `fields` names their fields
+  (typechecked) to add what rules cannot say, such as a relation. `update` takes
+  the key after the request, and the key is the FormRequest's route parameter
+  under that name, so `Rule::unique('products')->ignore($this->route('product'))`
+  keeps the record's own value and `Route::model()` binds it (rsc-kit/laravel
+  0.19, @rsc-kit/press 0.30.51). An `update` taking the request alone is refused
+  at startup:
+
+```ts
+import { productsStore, productsUpdate } from '@/actions/products'
+
+export const products = defineResource<Product>()({
+  name: 'products', key: 'id', title: 'name',
+  source: { list, find, delete: remove },
+  actions: { create: productsStore, update: productsUpdate },
+  fields: { category_id: { relation: 'categories' } },
+  table: (col) => [col.text('name'), col.money('price')],
+})
+```
+
+```php
+// app/Rsc/Actions/Products.php
+public function update(UpdateProductRequest $request, string $product): Product
+{
+    return tap(Product::findOrFail($product))->update($request->validated());
+}
+```
+
+- `list` is told `{ q, sort, dir, page, cursor, perPage, filters }`. Allowlist
+  `sort` before it reaches `orderBy`. A resource with `mode: 'client'` is listed
+  once with `perPage: null` and must return every row; the browser searches,
+  sorts and pages. `find` answering `null` is a 404.
+- A list answers `{ rows, total }` for numbered pages, or `{ rows, next, prev }`
+  to page by cursor, with Previous and Next and no count. Each resource chooses.
+  For a table too big to count, `cursorPaginate` - the result is typed as it
+  encodes, its rows unknown:
+
+```ts
+list: async (query) => {
+  const page = await rpc('Orders.list', query)
+
+  return { rows: page.data as Order[], next: page.next_cursor, prev: page.prev_cursor }
+},
+```
+
+```php
+public function list(array $query): CursorPaginator
+{
+    return Order::latest('id')->cursorPaginate($query['perPage'], cursor: $query['cursor'] ?? null);
+}
+```
+
+  `paginate()` maps as `{ rows: page.data as Order[], total: page.total }`.
 - Every call's last argument is the context `{ tenant }`, null without tenancy.
   Pass `tenant.id` on to the PHP side; do not trust a team id from the form.
 - `authorize: () => rpc<boolean>('Admin.allowed')` runs on every page and on
