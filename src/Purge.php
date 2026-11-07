@@ -2,9 +2,12 @@
 
 namespace RscKit;
 
+use Illuminate\Queue\NullQueue;
+use Illuminate\Queue\SyncQueue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Throwable;
 
 use function Illuminate\Support\defer;
@@ -25,6 +28,10 @@ use function Illuminate\Support\defer;
  * Every name changed during one request goes out as one purge. A purge that
  * fails is logged and never fails the change: the edge still drops its copy
  * at its max-age in CDN-Cache-Control.
+ *
+ * A 429 is tried once more after its Retry-After, at most five seconds, as a
+ * queued job, so no PHP worker sleeps through the wait. Without a queue that
+ * can delay a job the wait happens here instead, after the answer has gone.
  */
 class Purge
 {
@@ -76,6 +83,16 @@ class Purge
         }
     }
 
+    /**
+     * The one retry of a call the CDN answered 429: a second 429 is logged.
+     *
+     * @param  array{tags?: list<string>, paths?: list<string>, all?: bool}  $body
+     */
+    public function retry(array $body): void
+    {
+        $this->send($body, true);
+    }
+
     /** @param  array{tags?: list<string>, paths?: list<string>, all?: bool}  $body */
     private function send(array $body, bool $retried = false): void
     {
@@ -93,13 +110,40 @@ class Purge
         }
 
         if ($response->status() === 429 && ! $retried) {
-            usleep(min(max((int) $response->header('Retry-After'), 1), 5) * 1_000_000);
+            $seconds = min(max((int) $response->header('Retry-After'), 1), 5);
 
-            $this->send($body, true);
+            if (! $this->queueRetry($body, $seconds)) {
+                usleep($seconds * 1_000_000);
+
+                $this->retry($body);
+            }
 
             return;
         }
 
         Log::warning("rsc-kit: the CDN answered {$response->status()} to a purge; its copy is dropped at CDN-Cache-Control's max-age instead.", $body);
+    }
+
+    /**
+     * Sync, deferred and background queues ignore a delay, and the null queue
+     * drops the job, so those are a false here, as is a queue that is down.
+     *
+     * @param  array{tags?: list<string>, paths?: list<string>, all?: bool}  $body
+     */
+    private function queueRetry(array $body, int $seconds): bool
+    {
+        try {
+            $queue = Queue::connection();
+
+            if ($queue instanceof SyncQueue || $queue instanceof NullQueue) {
+                return false;
+            }
+
+            $queue->later($seconds, new RetryPurge($body));
+
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

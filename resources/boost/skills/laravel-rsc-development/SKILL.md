@@ -902,7 +902,11 @@ The renderer keeps a public one itself - ISR, with or without a CDN:
   on the kept page as `Cache-Tag`, so a CDN that purges by tag can drop it
   when one changes. On Homeport (`HOMEPORT_PURGE_URL` set),
   `Rsc::changed()` posts that purge itself, after the transaction commits
-  and the response has gone. Call it after the write, never before.
+  and the response has gone. Call it after the write, never before. A 429 is
+  tried once more as a queued `RetryPurge` job, so that retry needs
+  `queue:work` running; on a sync queue the PHP worker waits instead, up to
+  five seconds, after the response. To see whether the edge answered, read
+  its entry in `Cache-Status`: `X-RSC-Kit` is stored with the copy.
 - A public page also sends `CDN-Cache-Control` with the same lifetimes, for a
   CDN that reads it. Homeport's edge caches on nothing else, and strips it
   before the answer leaves, so it is not missing when a browser does not show
