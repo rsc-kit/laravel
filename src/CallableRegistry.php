@@ -7,8 +7,10 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Routing\Redirector;
+use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -313,6 +315,12 @@ class CallableRegistry
      * If the callable's first parameter type-hints a FormRequest, build one
      * from this call's args and validate it, as Laravel would on a route.
      *
+     * What follows the form is passed on, and is the request's route
+     * parameters by the method's own names: a panel's update(values, id)
+     * reaches update(UpdateProductRequest $request, string $product), and the
+     * rules read $this->route('product') - Rule::unique()->ignore() - as they
+     * would on PUT /products/{product}.
+     *
      * @param  array<int|string, mixed>  $args
      * @return array<int, mixed>
      */
@@ -338,6 +346,7 @@ class CallableRegistry
         }
 
         $data = isset($args[0]) && is_array($args[0]) ? $args[0] : $args;
+        $rest = isset($args[0]) && is_array($args[0]) ? array_slice(array_values($args), 1) : [];
 
         // A request of its own, carrying this call's arguments and nothing
         // else. The request the endpoint received is the host call's: its
@@ -348,6 +357,10 @@ class CallableRegistry
         $callRequest = $this->container->make('request')->duplicate([], $data);
         $callRequest->setJson(new InputBag($data));
 
+        if ($rest !== []) {
+            $this->routeTo($callRequest, array_slice($params, 1), $rest);
+        }
+
         // Built and filled here rather than made by the container, which
         // would fill it from the shared request and validate that before
         // this one could be handed over. The rest is what Laravel does to a
@@ -356,7 +369,32 @@ class CallableRegistry
         $formRequest->setContainer($this->container)->setRedirector($this->container->make(Redirector::class));
         $formRequest->validateResolved();
 
-        return [$formRequest];
+        return [$formRequest, ...$rest];
+    }
+
+    /**
+     * A route carrying the arguments after the form, named as the method
+     * names them, with the app's explicit bindings applied: Route::model()
+     * makes $this->route('product') the model, as on its own route.
+     *
+     * @param  array<int, \ReflectionParameter>  $params
+     * @param  array<int, mixed>  $values
+     */
+    private function routeTo(Request $request, array $params, array $values): void
+    {
+        $router = $this->container->make(Router::class);
+        $route = new Route(['POST'], $request->path(), fn () => null);
+        $route->setRouter($router)->setContainer($this->container);
+        $route->bind($request);
+
+        foreach ($params as $index => $param) {
+            if (array_key_exists($index, $values) && is_scalar($values[$index])) {
+                $route->setParameter($param->getName(), (string) $values[$index]);
+            }
+        }
+
+        $request->setRouteResolver(fn () => $route);
+        $router->substituteBindings($route);
     }
 
     /**

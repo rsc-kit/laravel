@@ -55,6 +55,10 @@ class ConformanceServiceProvider extends ServiceProvider
 
             return $request->input('name');
         });
+        $registry->register(
+            'Conformance.update',
+            fn (ConformanceUpdate $request, string $record): string => $record.':'.$request->input('name'),
+        );
         $registry->register('Conformance.redirect', fn () => throw new RscRedirectException('/login'));
         $registry->register('Conformance.revalidate', function (): string {
             Rsc::revalidate('orders');

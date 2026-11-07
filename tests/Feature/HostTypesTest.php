@@ -86,6 +86,8 @@ namespace Tests\Feature\HostTypesFixtures {
 
         public function cancel(int $id): void {}
 
+        public function update(StoreOrder $request, string $order): void {}
+
         public function untyped($anything)
         {
             return $anything;
@@ -107,6 +109,7 @@ namespace {
             'Orders.store' => [Orders::class, 'store'],
             'Orders.contact' => [Orders::class, 'contact'],
             'Orders.cancel' => [Orders::class, 'cancel'],
+            'Orders.update' => [Orders::class, 'update'],
             'Orders.untyped' => [Orders::class, 'untyped'],
             'Inline.add' => fn (int $a, int $b): int => $a + $b,
         ])), true);
@@ -123,6 +126,15 @@ namespace {
         expect($types['Orders.find']['optional'])->toBe(1)
             ->and($types['Orders.tag']['rest'])->toBe(['type' => 'string'])
             ->and($types['Orders.tag']['params'])->toBe([['type' => 'string']]);
+    });
+
+    it('types the arguments after a FormRequest as themselves: a panel\'s update takes the record\'s key', function () {
+        $params = describeOrders()['types']['Orders.update']['params'];
+
+        expect($params)->toHaveCount(2)
+            ->and($params[0]['type'])->toBe('object')
+            ->and(array_keys($params[0]['properties']))->toBe(['name', 'quantity', 'gift', 'tags'])
+            ->and($params[1])->toBe(['type' => 'string']);
     });
 
     it('describes a plain class result by its public properties, and an enum by its values', function () {
