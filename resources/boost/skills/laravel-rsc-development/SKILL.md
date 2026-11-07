@@ -708,22 +708,29 @@ The rest of `@rsc-kit/press`, drawn by the same theme.
 
 **A public form** (contact, sign-up) is `defineForm` from
 `@rsc-kit/press/forms`, placed as `<contact.Form />` in a page that stays
-static - no `connection()`, no Suspense for it:
+static - no `connection()`, no Suspense for it. `php artisan make:rsc-action
+Contact --method=send --form` writes it whole: `App\Http\Requests\SendContact`,
+`app/Rsc/Actions/Contact.php` with `send(SendContact $request)`, and this file
+(`bunx rsc-kit make:form contactSend` writes the file alone):
 
 ```ts
 // resources/js/forms/contact.ts
 import { defineForm } from '@rsc-kit/press/forms'
 import { shadcn } from '@rsc-kit/press/shadcn'
+import { contactSend } from '../server-actions.generated'
 
 export const contact = defineForm({
   name: 'contact',
-  action: 'Contact.send',
+  action: contactSend,
   fields: { message: { type: 'textarea' } },
   theme: shadcn,
   done: 'Thanks - we will be in touch.',  // or redirect: '/thanks', never both
 })
 ```
 
+- `action` is the generated action, never a string (`'Contact.send'` throws).
+  So the class is in `app/Rsc/Actions`: one in `app/Rsc` is rpc only and has
+  no generated action.
 - No zod schema and no `handle`: the fields and the browser's checks come from
   the `FormRequest` on `Contact::send`, read at build time, and its 422 lands
   under the same fields, uncaught. Do not repeat the rules in TypeScript.
@@ -731,7 +738,7 @@ export const contact = defineForm({
   `size`, `between` and `in` or `Rule::in()`; anything else, such as `regex`
   or `Rule::enum()`, stays the server's check alone.
 - A file field needs `form` and `handle`, as does a check in TypeScript first:
-  keep a schema, and `handle: (values) => rpc('Contact.send', values)`.
+  keep a schema, and `handle: (values) => contactSend(values)`.
 - Every form carries a hidden `homepage` field as a bot trap: filled in, the
   submission is answered as a success and dropped, and nothing is called.
   So no field may be named `homepage`. It is not a CAPTCHA - add

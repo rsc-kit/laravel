@@ -163,6 +163,40 @@ Anything else is a failure: reported to Laravel's log and answered 500. With
 trace, and the renderer shows them under its own stack — so a failed `rpc()`
 points at the line of PHP that threw. Never in production.
 
+## Public forms
+
+A form anyone may fill in, such as a contact form or a sign-up, is drawn from a
+`FormRequest`, with no schema in TypeScript. Type-hint the request on an action
+under `app/Rsc/Actions`:
+
+```php
+class Contact
+{
+    public function send(SendContact $request): void
+    {
+        Message::create($request->validated());
+    }
+}
+```
+
+and hand the action the build generates from it, `contactSend`, to
+`@rsc-kit/press`:
+
+```ts
+import { contactSend } from '../server-actions.generated'
+
+export const contact = defineForm({ name: 'contact', action: contactSend, theme: shadcn })
+```
+
+`php artisan make:rsc-action Contact --method=send --form` writes all three: the
+request, the action taking it, and `resources/js/forms/contact.ts`.
+
+The fields come from `rules()` in order. `required`, the type rules, `email`,
+`url`, `date`, `min`, `max`, `size`, `between` and `in` become the browser's
+checks. Everything else is Laravel's alone, and its 422 shows under the field.
+[Public forms on Laravel](https://docs.rsc-kit.dev/hosts/laravel/#public-forms)
+has the whole recipe.
+
 ## Commands
 
 | command | what it does |
@@ -170,7 +204,7 @@ points at the line of PHP that threw. Never in production.
 | `rsc:install` | publishes `config/rsc.php`, generates both secrets, runs `rsc-kit init` for the JavaScript half (`--skip-js` for the PHP half only) |
 | `rsc:prune-versions` | deletes `refreshOn` versions nobody changed in `rsc.versions_keep_days` (database mode); schedule it daily |
 | `rsc:host-manifest` | writes `rsc-host.json` — `actions`, `functions`, and their `types` and `defs` from the PHP signatures. `vite.config.ts` runs it as dev and every build start (`rscKit({ hostManifest })`) |
-| `make:rsc-action` | a server action under `app/Rsc/Actions`, or with `--rpc` a class for `rpc()` under `app/Rsc`; `--method`, `--auth`, `--can`, `--middleware`, `--revalidate`. Writes the manifest too |
+| `make:rsc-action` | a server action under `app/Rsc/Actions`, or with `--rpc` a class for `rpc()` under `app/Rsc`; `--method`, `--auth`, `--can`, `--middleware`, `--revalidate`, and `--form` for a public form with its `FormRequest` and `resources/js/forms` file. Writes the manifest too |
 | `rsc:cache` / `rsc:clear` | cache the discovered callables for production; run by `optimize` and `optimize:clear` |
 
 ## Requirements
