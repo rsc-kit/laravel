@@ -19,7 +19,7 @@ use RscKit\RscKitServiceProvider;
  *
  * --form is a public form whole: a FormRequest whose rules() are the form's
  * fields, the action taking it, and resources/js/forms/<name>.ts handing the
- * generated action to defineForm - the three files the Laravel guide shows.
+ * generated action to defineBlueprint - the three files the Laravel guide shows.
  */
 class MakeActionCommand extends Command
 {
@@ -299,7 +299,7 @@ class MakeActionCommand extends Command
         $this->components->info("Form request [{$path}] created.");
     }
 
-    /** resources/js/forms/<name>.ts, handing the generated action to defineForm. */
+    /** resources/js/forms/<name>.ts, handing the generated action to defineBlueprint. */
     private function writeForm(string $class): void
     {
         $method = ((array) $this->option('method'))[0] ?? null;
@@ -316,15 +316,15 @@ class MakeActionCommand extends Command
 
         $this->files->ensureDirectoryExists(dirname($path));
         $this->files->put($path, <<<TS
-        import { defineForm } from '@rsc-kit/press/forms'
+        import { defineBlueprint } from '@rsc-kit/press/forms'
         import { shadcn } from '@rsc-kit/press/shadcn'
         import { {$action} } from '../server-actions.generated'
 
         // The fields are the request's rules(), and every check is Laravel's.
-        // Place it in any page: <{$export}.Form />
-        export const {$export} = defineForm({
+        // Place it in any page: <{$export}.Form />, or hand it to a resource as its form.
+        export const {$export} = defineBlueprint({
           name: '{$name}',
-          action: {$action},
+          actions: { create: {$action} },
           theme: shadcn,
         })
 

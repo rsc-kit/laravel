@@ -138,7 +138,8 @@ it('writes a public form whole with --form: the request, the action taking it, a
     expect(File::get(resource_path('js/forms/contact.ts')))
         ->toContain("import { contactSend } from '../server-actions.generated'")
         ->toContain("name: 'contact',")
-        ->toContain('action: contactSend,');
+        ->toContain("import { defineBlueprint } from '@rsc-kit/press/forms'")
+        ->toContain('actions: { create: contactSend },');
 
     expect(ActionManifest::discover())->toHaveKey('contactSend', 'Contact.send');
 
