@@ -5,6 +5,9 @@ namespace RscKit\Support;
 use BackedEnum;
 use Carbon\CarbonInterface;
 use Closure;
+use Illuminate\Contracts\Pagination\CursorPaginator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use Illuminate\Foundation\Http\FormRequest;
@@ -205,8 +208,41 @@ class HostTypes
             'bool' => ['type' => 'boolean'],
             'true', 'false' => ['type' => 'boolean'],
             'null' => ['type' => 'null'],
-            default => class_exists($name) || enum_exists($name) ? $this->class($name) : [],
+            // An interface is a class too: a method returning the CursorPaginator contract.
+            default => class_exists($name) || enum_exists($name) || interface_exists($name) ? $this->class($name) : [],
         };
+    }
+
+    /**
+     * The encoding of a paginator: Laravel's toArray(), its rows as unknown.
+     *
+     * @param  class-string  $class
+     * @return array<string, mixed>
+     */
+    private function page(string $class): array
+    {
+        $url = ['anyOf' => [['type' => 'string'], ['type' => 'null']]];
+        $properties = ['data' => ['type' => 'array', 'items' => (object) []], 'path' => $url, 'per_page' => ['type' => 'integer'],
+            'next_page_url' => $url, 'prev_page_url' => $url];
+
+        if (is_a($class, CursorPaginator::class, true)) {
+            $properties += ['next_cursor' => $url, 'prev_cursor' => $url];
+        } else {
+            $number = ['anyOf' => [['type' => 'integer'], ['type' => 'null']]];
+            $properties += ['current_page' => ['type' => 'integer'], 'first_page_url' => ['type' => 'string'], 'from' => $number, 'to' => $number];
+
+            if (is_a($class, LengthAwarePaginator::class, true)) {
+                $properties += ['total' => ['type' => 'integer'], 'last_page' => ['type' => 'integer'], 'last_page_url' => ['type' => 'string'],
+                    'links' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                        'url' => $url, 'label' => ['type' => 'string'], 'active' => ['type' => 'boolean'],
+                    ], 'required' => ['active', 'label', 'url']]]];
+            }
+        }
+
+        $required = array_keys($properties);
+        sort($required);
+
+        return ['type' => 'object', 'properties' => $properties, 'required' => $required];
     }
 
     /**
@@ -227,6 +263,17 @@ class HostTypes
         // encodes as an object - and stays open below.
         if (is_a($class, CarbonInterface::class, true)) {
             return ['type' => 'string', 'format' => 'date-time'];
+        }
+
+        // A page: what it holds is not on the class, but how it encodes is,
+        // and a list paged by count or by cursor reads total or next_cursor.
+        if (is_a($class, CursorPaginator::class, true) || is_a($class, Paginator::class, true)) {
+            return $this->page($class);
+        }
+
+        // Any other interface says nothing of what implements it.
+        if (interface_exists($class)) {
+            return [];
         }
 
         // Its own encoding, or a runtime one: a model, a collection, a
