@@ -83,6 +83,8 @@ dataset('what an agent must be told', [
     'defineForm({ action }) draws a form from a FormRequest, with no schema' => ['action: contactSend'],
     'make:rsc-action --form writes a public form whole, and rsc-kit make:form the form alone' => ['make:rsc-action', '--form', 'make:form contactSend'],
     'a public revalidate page also sends CDN-Cache-Control, which Homeport\'s edge caches on and strips' => ['CDN-Cache-Control'],
+    'a route middleware runs against the page it guards, so signed, can: with an explicit binding and a per-visitor throttle work' => ["against the page's request", 'Route::model('],
+    'every host call carries the visitor\'s address, so a throttle counts per visitor' => ['X-Rsc-Client-Ip', 'RSC_TRUST_FORWARDED=1'],
     'the renderer keeps a public revalidate page itself, serves it stale while one render replaces it, and Rsc::changed() makes it render on every instance' => ['X-RSC-Kit: cached'],
 ]);
 
