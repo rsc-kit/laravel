@@ -114,6 +114,7 @@ class RscKitServiceProvider extends ServiceProvider
             $app->make(CallableRegistry::class),
             $app->make(Revalidation::class),
             (string) config('rsc.host_call_secret'),
+            (string) config('rsc.host_call_secret_previous'),
         ));
     }
 

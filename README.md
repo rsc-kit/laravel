@@ -46,6 +46,10 @@ it, so keep it unreachable from outside as well as authenticated: restrict
 the path at the web server, or bind it to loopback. The wire format is in
 [PROTOCOL.md](PROTOCOL.md).
 
+To rotate the secret without a refused call, give Laravel the new value with
+the old one as `RSC_HOST_CALL_SECRET_PREVIOUS` - it answers either - then the
+renderer the new value, then remove `RSC_HOST_CALL_SECRET_PREVIOUS`.
+
 There is no PHP-side rendering, no socket and no process for PHP to
 supervise. Vite is the renderer in development; `vite build` writes a Nitro
 server to `.output/` for production. Either process can face the browser:

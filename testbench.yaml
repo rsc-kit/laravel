@@ -7,6 +7,8 @@ providers:
 env:
   - APP_KEY="base64:Y29uZm9ybWFuY2UtY29uZm9ybWFuY2UtY29uZm9ybWE="
   - RSC_HOST_CALL_SECRET=test
+  # The conformance suite's --previous-secret: a rotation in progress.
+  - RSC_HOST_CALL_SECRET_PREVIOUS=old
   - APP_ENV=testing
   # Versions live in the cache, and `serve` runs several workers: a store
   # they share, not one per process.

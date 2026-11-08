@@ -75,6 +75,13 @@ return [
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
 
     /*
+     * The secret a rotation is moving away from, answered as well while it is
+     * set. Give the backend the new secret with the old one here, roll the
+     * renderer to the new one, then remove this.
+     */
+    'host_call_secret_previous' => env('RSC_HOST_CALL_SECRET_PREVIOUS'),
+
+    /*
      * Where Rsc::changed() keeps versions for refreshOn.
      *
      * 'cache' (the default, and the recommendation): the app's cache. The
