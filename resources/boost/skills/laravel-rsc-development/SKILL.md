@@ -854,6 +854,11 @@ stored only after the rest of the form passes.
   build refuses a `PUBLIC_*` variable.
 - `RSC_HOST_CALL_SECRET` and `APP_URL` (or `RSC_BACKEND`) are read by both
   Laravel and the renderer from the app's `.env`.
+- To rotate `RSC_HOST_CALL_SECRET`, change Laravel first. Give it the new
+  value with the old one as `RSC_HOST_CALL_SECRET_PREVIOUS`, so it accepts
+  either. Then give the renderer the new value, then remove
+  `RSC_HOST_CALL_SECRET_PREVIOUS`. No call is refused (rsc-kit/laravel 0.21;
+  before that, change both together).
 - `RSC_SIGNING_SECRET` is the renderer's, for `refreshOn`: a long random
   string, the same on every instance. It is not the host-call secret and
   does not fall back to it. In production, an app that uses `refreshOn`

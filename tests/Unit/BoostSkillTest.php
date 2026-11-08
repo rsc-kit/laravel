@@ -81,6 +81,7 @@ dataset('what an agent must be told', [
     "a press page is kept between requests and a panel save calls changed('press:pages')" => ["changed('press:pages')"],
     'an upload field is { type: \'image\' | \'file\', storage } and put answers the url the record saves' => ["type: 'image'"],
     'Rsc::changed() purges the edge when RSC_PURGE_URL is set' => ['RSC_PURGE_URL'],
+    'the host-call secret rotates with RSC_HOST_CALL_SECRET_PREVIOUS on Laravel, which accepts either until it is removed' => ['RSC_HOST_CALL_SECRET_PREVIOUS'],
     'Homeport\'s HOMEPORT_PURGE_URL is still read when RSC_PURGE_URL is unset' => ['HOMEPORT_PURGE_URL'],
     'whether the edge answered is hit in its own Cache-Status entry' => ['its own entry in `Cache-Status`'],
     'a purge answered 429 is retried by a queued job, or in place on a sync queue' => ['RetryPurge'],
