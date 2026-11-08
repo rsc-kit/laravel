@@ -13,4 +13,4 @@ env:
   - CACHE_STORE=file
   - CACHE_DRIVER=file
   # Where the conformance suite listens for purges (--purge-port 8790).
-  - HOMEPORT_PURGE_URL=http://127.0.0.1:8790/
+  - RSC_PURGE_URL=http://127.0.0.1:8790/
