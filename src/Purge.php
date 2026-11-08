@@ -17,10 +17,10 @@ use function Illuminate\Support\defer;
  *
  * A `revalidate` page goes out with the `Cache-Tag` of every `cache()` answer
  * it used, and the names Rsc::changed() moves are those tags. The change is
- * made here and never passes through the renderer, so on Homeport - where
- * HOMEPORT_PURGE_URL is set - this posts the purge itself:
+ * made here and never passes through the renderer, so with RSC_PURGE_URL set
+ * (or the HOMEPORT_PURGE_URL Homeport sets) this posts the purge itself:
  *
- *     POST $HOMEPORT_PURGE_URL  {"tags": ["posts", "post:1"]}
+ *     POST $RSC_PURGE_URL  {"tags": ["posts", "post:1"]}
  *
  * After the transaction commits, since a CDN that fetched the page again in
  * between would keep the old data; and after the answer has gone, through
