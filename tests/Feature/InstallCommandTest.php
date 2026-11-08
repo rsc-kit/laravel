@@ -172,3 +172,25 @@ it('does not call a renderer that is not installed yet a mismatch', function () 
     // `npm install` is the next thing the command tells them to run.
     $this->artisan('rsc:install --skip-js')->assertSuccessful();
 });
+
+it('adds itself to boost.json, keeping what is there, so Boost installs its skill', function () {
+    File::put($this->base.'/.env', "APP_ENV=local\n");
+    File::put($this->base.'/boost.json', json_encode(['agents' => ['claude_code'], 'skills' => ['laravel-best-practices']], JSON_PRETTY_PRINT).PHP_EOL);
+
+    $this->artisan('rsc:install --skip-js')->assertSuccessful();
+    $this->artisan('rsc:install --skip-js')->assertSuccessful();
+
+    expect(json_decode(File::get($this->base.'/boost.json'), true))->toBe([
+        'agents' => ['claude_code'],
+        'packages' => ['rsc-kit/laravel'],
+        'skills' => ['laravel-best-practices'],
+    ]);
+});
+
+it('leaves an app without Boost without a boost.json', function () {
+    File::put($this->base.'/.env', "APP_ENV=local\n");
+
+    $this->artisan('rsc:install --skip-js')->assertSuccessful();
+
+    expect(File::exists($this->base.'/boost.json'))->toBeFalse();
+});
