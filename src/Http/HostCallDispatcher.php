@@ -43,6 +43,7 @@ class HostCallDispatcher
         private CallableRegistry $registry,
         private Revalidation $revalidation,
         private string $secret,
+        private string $previousSecret = '',
     ) {}
 
     /**
@@ -61,11 +62,18 @@ class HostCallDispatcher
         // empty header. The service provider does not register the route
         // without a secret, and this is the reason not to rely on that being
         // the only way one of these is ever built.
-        if ($this->secret === '') {
+        if ($this->secret === '' || $presented === null) {
             return false;
         }
 
-        return $presented !== null && hash_equals($this->secret, $presented);
+        // The secret a rotation is moving away from is answered too, while
+        // RSC_HOST_CALL_SECRET_PREVIOUS names it: the renderers keep sending
+        // it until each has rolled to the new one. Both are compared every
+        // time, so how long the check takes does not say which one held.
+        $current = hash_equals($this->secret, $presented);
+        $previous = $this->previousSecret !== '' && hash_equals($this->previousSecret, $presented);
+
+        return $current || $previous;
     }
 
     /**

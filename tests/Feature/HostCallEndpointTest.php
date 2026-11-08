@@ -26,7 +26,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * decodes a body and hands both over. A second framework's binding would be
  * the same twenty lines, and these are the assertions it would inherit.
  */
-function dispatcherWith(array $callables, string $secret = 's3cret'): HostCallDispatcher
+function dispatcherWith(array $callables, string $secret = 's3cret', string $previous = ''): HostCallDispatcher
 {
     $registry = new CallableRegistry(app());
 
@@ -34,7 +34,7 @@ function dispatcherWith(array $callables, string $secret = 's3cret'): HostCallDi
         $registry->register($name, $callable);
     }
 
-    return new HostCallDispatcher($registry, app(Revalidation::class), $secret);
+    return new HostCallDispatcher($registry, app(Revalidation::class), $secret, $previous);
 }
 
 describe('the secret', function () {
@@ -48,6 +48,32 @@ describe('the secret', function () {
         expect($dispatcher->authorises('nope'))->toBeFalse();
         expect($dispatcher->authorises(null))->toBeFalse();
         expect($dispatcher->authorises(''))->toBeFalse();
+    });
+
+    it('accepts the previous one while it is set, so a rotation refuses no call', function () {
+        $dispatcher = dispatcherWith([], previous: 'old');
+
+        expect($dispatcher->authorises('old'))->toBeTrue();
+        expect($dispatcher->authorises('s3cret'))->toBeTrue();
+        expect($dispatcher->authorises('nope'))->toBeFalse();
+        expect(dispatcherWith([])->authorises('old'))->toBeFalse();
+    });
+
+    it('lets no empty secret through an empty previous one', function () {
+        expect(dispatcherWith([], previous: '')->authorises(''))->toBeFalse();
+    });
+
+    it('answers nothing on the previous secret alone', function () {
+        // A previous secret is a rotation in progress, not a configuration.
+        expect(dispatcherWith([], secret: '', previous: 'old')->authorises('old'))->toBeFalse();
+    });
+
+    it('reads the previous one from config', function () {
+        config()->set('rsc.host_call_secret', 'new');
+        config()->set('rsc.host_call_secret_previous', 'old');
+        app()->forgetScopedInstances();
+
+        expect(app(HostCallDispatcher::class)->authorises('old'))->toBeTrue();
     });
 
     it('refuses everything when none is configured', function () {
