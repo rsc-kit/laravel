@@ -36,6 +36,7 @@ class InstallCommand extends Command
 
         $this->publishConfig();
         $this->ensureSecret();
+        $this->addToBoost();
 
         if ($this->option('skip-js')) {
             // What is already here, since this run is not about to change it.
@@ -155,6 +156,46 @@ class InstallCommand extends Command
      * secret in a repository is not a secret, and a placeholder that looks
      * usable is worse than none — someone will ship it.
      */
+    /**
+     * Boost installs a package's skill only once the app has chosen the package:
+     * its name under `packages` in boost.json. It asks at boost:install, and
+     * when `boost:update` is run by hand - never from Composer's post-update-cmd,
+     * so as not to block `composer update`. An app that had Boost before this
+     * package was asked nothing, and the skill was never installed, nor updated.
+     * Added here, in the format Boost writes the file in, and installed at once.
+     */
+    private function addToBoost(): void
+    {
+        $path = base_path('boost.json');
+
+        if (! is_file($path)) {
+            return;
+        }
+
+        $config = json_decode((string) file_get_contents($path), true);
+
+        if (! is_array($config)) {
+            $this->components->warn('boost.json is not valid JSON, so the rsc-kit skill was not added to it.');
+
+            return;
+        }
+
+        $packages = $config['packages'] ?? [];
+
+        if (! in_array('rsc-kit/laravel', $packages, true)) {
+            $config['packages'] = [...$packages, 'rsc-kit/laravel'];
+            ksort($config);
+
+            file_put_contents($path, json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);
+
+            $this->components->task('Added rsc-kit/laravel to boost.json, so Boost installs its skill and keeps it current');
+        }
+
+        if ($this->getApplication()?->has('boost:update')) {
+            $this->call('boost:update', ['--no-discover' => true]);
+        }
+    }
+
     private function ensureSecret(): void
     {
         $env = base_path('.env');

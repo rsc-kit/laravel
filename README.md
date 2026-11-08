@@ -66,6 +66,19 @@ php artisan rsc:install
 JavaScript half. Nothing you already have is overwritten: where a file exists,
 the exact edit is printed for you to make instead.
 
+With [Laravel Boost](https://github.com/laravel/boost) installed, it also adds
+`rsc-kit/laravel` to `packages` in `boost.json` and runs `boost:update`, which
+installs the `laravel-rsc-development` skill for your agents. Boost installs a
+package's skill only once the app has opted in, and `composer update` never
+asks. With that line in place, every `composer update` keeps the skill
+current. An app set up before 0.20.3 adds it by hand:
+
+```json
+"packages": ["rsc-kit/laravel"]
+```
+
+Then run `php artisan boost:update`.
+
 A function your components can call — any public method of a class under
 `app/Rsc`, named `Class.method`, resolved through the container:
 
