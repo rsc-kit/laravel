@@ -987,7 +987,8 @@ The renderer keeps a public one itself - ISR, with or without a CDN:
   off it.
 - An `rpc()` wrapped in `cache(fn, { key, revalidate, tags })` puts its tags
   on the kept page as `Cache-Tag`, so a CDN that purges by tag can drop it
-  when one changes. On Homeport (`HOMEPORT_PURGE_URL` set),
+  when one changes. With `RSC_PURGE_URL` set (rsc-kit/laravel 0.20.1; on
+  Homeport, the `HOMEPORT_PURGE_URL` it sets is read when that is unset),
   `Rsc::changed()` posts that purge itself, after the transaction commits
   and the response has gone. Call it after the write, never before. A 429 is
   tried once more as a queued `RetryPurge` job, so that retry needs
