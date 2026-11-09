@@ -96,6 +96,7 @@ dataset('what an agent must be told', [
     'rscKit({ contentSecurityPolicy }) sends a strict policy, the page\'s own inline code allowed by hash or a per-response nonce' => ['contentSecurityPolicy'],
     'an app\'s inline <style> in a Suspense hole is refused under the policy; CSS goes in a stylesheet' => ['inline `<style>`'],
     'a Laravel CSP package or middleware on the pages breaks every streamed page' => ['CSP package'],
+    'vite dev sends the policy too, with \'unsafe-eval\', so a refusal shows before production' => ["'unsafe-eval'"],
 ]);
 
 it('says it', function (string $needle) use ($skill) {

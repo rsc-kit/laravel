@@ -1017,7 +1017,10 @@ rscKit({ contentSecurityPolicy: { directives: { 'img-src': ["'self'", 'data:'] }
 
 The engine adds what each page's own inline code needs: hashes on a page the
 build stored, a kept page or a shell, and a nonce, new per response, where a
-page streams. Not in `vite dev`.
+page streams. `vite dev` sends the same policy plus `'unsafe-eval'` (React's
+development build needs it; never in a build), so a refusal shows while you
+work. Every dev page renders per request: your own inline `<script>` or
+`<style>` is refused there even on a page the build would store.
 
 - An inline `<style>` or `<script>` the app writes runs only in a stored page
   or shell. Inside a `<Suspense>` hole, on a per-request page or after a
