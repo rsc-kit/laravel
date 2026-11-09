@@ -93,6 +93,10 @@ dataset('what an agent must be told', [
     'an admin resource takes the generated actions in place of a schema, update taking the key as the FormRequest\'s route parameter' => ['ignore($this->route(\'product\'))', 'actions: { create: productsStore, update: productsUpdate }'],
     'an admin list pages by count or by cursor, cursorPaginate typed as it encodes' => ['cursorPaginate', '{ rows, next, prev }'],
     'the renderer keeps a public revalidate page itself, serves it stale while one render replaces it, and Rsc::changed() makes it render on every instance' => ['X-RSC-Kit: cached'],
+    'rscKit({ contentSecurityPolicy }) sends a strict policy, the page\'s own inline code allowed by hash or a per-response nonce' => ['contentSecurityPolicy'],
+    'an app\'s inline <style> in a Suspense hole is refused under the policy; CSS goes in a stylesheet' => ['inline `<style>`'],
+    'a Laravel CSP package or middleware on the pages breaks every streamed page' => ['CSP package'],
+    'vite dev sends the policy too, with \'unsafe-eval\', so a refusal shows before production' => ["'unsafe-eval'"],
 ]);
 
 it('says it', function (string $needle) use ($skill) {
