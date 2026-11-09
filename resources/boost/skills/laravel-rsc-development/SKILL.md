@@ -1006,6 +1006,30 @@ The renderer keeps a public one itself - ISR, with or without a CDN:
   before the answer leaves, so it is not missing when a browser does not show
   it there.
 
+## Content Security Policy
+
+A strict policy goes in the renderer's config, never in Laravel:
+
+```ts title="vite.config.ts"
+rscKit({ contentSecurityPolicy: {} })   // default-src 'self', no 'unsafe-inline'
+rscKit({ contentSecurityPolicy: { directives: { 'img-src': ["'self'", 'data:'] }, reportOnly: true } })
+```
+
+The engine adds what each page's own inline code needs: hashes on a page the
+build stored, a kept page or a shell, and a nonce, new per response, where a
+page streams. Not in `vite dev`.
+
+- An inline `<style>` or `<script>` the app writes runs only in a stored page
+  or shell. Inside a `<Suspense>` hole, on a per-request page or after a
+  navigation it is refused: put CSS in a stylesheet, or add `'unsafe-inline'`
+  to `style-src`. `style={{ ... }}` is fine (`style-src-attr` allows it).
+- Do NOT add a CSP package (spatie/laravel-csp) or a middleware setting
+  `Content-Security-Policy` on the pages: React never sees its nonce, so
+  every streamed page is refused, and two policies are both enforced. With
+  Laravel in front (`RendererProxy`), keep such middleware off the proxied
+  pages. A `Content-Security-Policy` in `rscKit({ headers })` too is refused
+  at build.
+
 ## Production
 
 ```sh
