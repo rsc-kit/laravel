@@ -98,6 +98,7 @@ dataset('what an agent must be told', [
     'a Laravel CSP package or middleware on the pages breaks every streamed page' => ['CSP package'],
     'vite dev sends the policy too, with \'unsafe-eval\', so a refusal shows before production' => ["'unsafe-eval'"],
     'vite dev allows the local HMR socket under the policy, and Herd Studio\'s .test injection is refused, not the app' => ['ws://localhost:*', 'Herd Studio'],
+    'a library that takes a nonce (next-themes) is given useNonce(), a client hook, never a server-read nonce passed down' => ['useNonce()', '@rsc-kit/core/useNonce'],
     'one dev server per app: a second vite waits for the first to stop, and composer dev or Herd may already run one' => ['One dev server per app', 'waits, starting only when it stops'],
 ]);
 

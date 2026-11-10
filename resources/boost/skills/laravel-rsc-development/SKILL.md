@@ -1034,6 +1034,27 @@ a `.test` page may be Herd Studio's injection, not the app's. Every dev page ren
   or shell. Inside a `<Suspense>` hole, on a per-request page or after a
   navigation it is refused: put CSS in a stylesheet, or add `'unsafe-inline'`
   to `style-src`. `style={{ ... }}` is fine (`style-src-attr` allows it).
+- A library that takes a nonce (next-themes, an analytics snippet) is given
+  `useNonce()` from `@rsc-kit/core/useNonce`, a client hook. Wrap the provider
+  in a `'use client'` component and render that from the root layout. Never
+  pass down a nonce read on the server, because a navigation's payload has a
+  different nonce from the document's:
+
+  ```tsx
+  'use client';
+  import { ThemeProvider } from 'next-themes';
+  import { useNonce } from '@rsc-kit/core/useNonce';
+
+  export function Theme({ children }: { children: React.ReactNode }) {
+    return <ThemeProvider nonce={useNonce()} attribute="class" disableTransitionOnChange>{children}</ThemeProvider>;
+  }
+  ```
+
+  It returns `undefined` on a page allowed by hash (stored, or a shell's own
+  HTML). The library's inline script is hashed there and runs, but a `<style>`
+  inserted after hydration (`disableTransitionOnChange`) is refused on a stored
+  page with no holes. On such a page, drop the option or add `'unsafe-inline'`
+  to `style-src`.
 - Do NOT add a CSP package (spatie/laravel-csp) or a middleware setting
   `Content-Security-Policy` on the pages: React never sees its nonce, so
   every streamed page is refused, and two policies are both enforced. With
