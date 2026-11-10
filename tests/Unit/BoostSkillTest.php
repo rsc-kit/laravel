@@ -97,6 +97,8 @@ dataset('what an agent must be told', [
     'an app\'s inline <style> in a Suspense hole is refused under the policy; CSS goes in a stylesheet' => ['inline `<style>`'],
     'a Laravel CSP package or middleware on the pages breaks every streamed page' => ['CSP package'],
     'vite dev sends the policy too, with \'unsafe-eval\', so a refusal shows before production' => ["'unsafe-eval'"],
+    'vite dev allows the local HMR socket under the policy, and Herd Studio\'s .test injection is refused, not the app' => ['ws://localhost:*', 'Herd Studio'],
+    'one dev server per app: a second vite refuses to start, and composer dev or Herd may already run one' => ['One dev server per app'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {

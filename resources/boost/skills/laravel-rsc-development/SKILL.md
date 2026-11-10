@@ -898,6 +898,11 @@ Serve the app through Herd, Valet or PHP-FPM and open its own address. `npm
 run dev` writes `public/rsc-hot`, and Laravel hands every url it does not
 route to the dev server.
 
+One dev server per app. A second `vite` in the same app refuses to start and
+names the first: two would share Vite's pre-bundle cache and break each
+other (`ERR_OUTDATED_OPTIMIZED_DEP`). `composer dev`, or Herd's `artisan
+dev`, may already be running one; use it, or stop it before starting another.
+
 `php artisan serve` has one worker by default and cannot do this: the
 proxying request holds it while the page's `rpc()` calls need another. Use
 `PHP_CLI_SERVER_WORKERS=4` in `.env` with `php artisan serve --no-reload`, or
@@ -1018,8 +1023,10 @@ rscKit({ contentSecurityPolicy: { directives: { 'img-src': ["'self'", 'data:'] }
 The engine adds what each page's own inline code needs: hashes on a page the
 build stored, a kept page or a shell, and a nonce, new per response, where a
 page streams. `vite dev` sends the same policy plus `'unsafe-eval'` (React's
-development build needs it; never in a build), so a refusal shows while you
-work. Every dev page renders per request: your own inline `<script>` or
+development build needs it; never in a build) and the local dev server in
+`connect-src` (`ws://localhost:*`, Vite's HMR socket on a `my-app.test` page),
+so a refusal shows while you work. An inline script or style refused only on
+a `.test` page may be Herd Studio's injection, not the app's. Every dev page renders per request: your own inline `<script>` or
 `<style>` is refused there even on a page the build would store.
 
 - An inline `<style>` or `<script>` the app writes runs only in a stored page
