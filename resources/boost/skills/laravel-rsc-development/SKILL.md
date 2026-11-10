@@ -898,10 +898,11 @@ Serve the app through Herd, Valet or PHP-FPM and open its own address. `npm
 run dev` writes `public/rsc-hot`, and Laravel hands every url it does not
 route to the dev server.
 
-One dev server per app. A second `vite` in the same app refuses to start and
-names the first: two would share Vite's pre-bundle cache and break each
-other (`ERR_OUTDATED_OPTIMIZED_DEP`). `composer dev`, or Herd's `artisan
-dev`, may already be running one; use it, or stop it before starting another.
+One dev server per app. A second `vite` in the same app names the first and
+waits, starting only when it stops: two at once would share Vite's
+pre-bundle cache and break each other (`ERR_OUTDATED_OPTIMIZED_DEP`).
+`composer dev`, or Herd's `artisan dev`, may already be running one; use it.
+A `vite` that sits waiting is not hung.
 
 `php artisan serve` has one worker by default and cannot do this: the
 proxying request holds it while the page's `rpc()` calls need another. Use
