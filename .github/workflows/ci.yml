@@ -48,3 +48,13 @@ jobs:
           node /tmp/rsc-kit/packages/core/dist/conformance.js \
             --endpoint http://127.0.0.1:8125/__rsc/host-call --secret test --previous-secret old --manifest /tmp/rsc-host.json \
             --purge-port 8790
+      # Again with APP_DEBUG on, as in development: a failed call must carry
+      # its exception's class, message and frames, which the renderer's error
+      # overlay shows. The run above, with debug off, is the production one.
+      - name: Run it with debug on
+        run: |
+          APP_DEBUG=true PHP_CLI_SERVER_WORKERS=4 vendor/bin/testbench serve --port=8126 --no-reload &
+          for i in $(seq 1 60); do curl -s -o /dev/null 127.0.0.1:8126/ && break; sleep 1; done
+          node /tmp/rsc-kit/packages/core/dist/conformance.js \
+            --endpoint http://127.0.0.1:8126/__rsc/host-call --secret test --previous-secret old --manifest /tmp/rsc-host.json \
+            --purge-port 8790 --debug
