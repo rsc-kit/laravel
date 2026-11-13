@@ -100,6 +100,12 @@ dataset('what an agent must be told', [
     'vite dev allows the local HMR socket under the policy, and Herd Studio\'s .test injection is refused, not the app' => ['ws://localhost:*', 'Herd Studio'],
     'a library that takes a nonce (next-themes) is given useNonce(), a client hook, never a server-read nonce passed down' => ['useNonce()', '@rsc-kit/core/useNonce'],
     'one dev server per app: a second vite waits for the first to stop, and composer dev or Herd may already run one' => ['One dev server per app', 'waits, starting only when it stops'],
+    'two pages at one url, as two route groups make, stop the build naming both' => ['both the page at'],
+    'a subdomain reaches the top-level directory of its name, and with none is served by path, which the dev server says' => ['served by path', 'SESSION_DOMAIN'],
+    'rsc:install runs init, which asks about the compiler, Tailwind, shadcn/ui and oxlint, never validation or env' => ['oxlint', 'composer require` cannot ask'],
+    'init\'s styles.css imports resources/css/app.css where it imports Tailwind' => ['resources/css/app.css'],
+    'a failed action in development opens the error overlay with Laravel\'s exception' => ['error overlay', 'APP_DEBUG=true'],
+    'a public/ file hides the app\'s favicon.ico or robots, and Laravel ships an empty one' => ['public/favicon.ico'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {

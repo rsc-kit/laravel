@@ -116,6 +116,19 @@ rsc-host.json                written by PHP: actions and function names
 bootstrap/rsc/vite/          the build's generated code and route table
 ```
 
+A route group adds nothing to the url, so two groups can hold the same page:
+`(home)/page.tsx` and `(preview)/(home)/page.tsx` are both `/`, and the build
+stops naming both ("are both the page at /"). Give one a real directory:
+`(preview)/home/page.tsx`.
+
+A top-level directory is also a subdomain: with `APP_URL` (or `metadataBase`,
+or `rscKit({ hosts })`) naming the site, `merchant.example.test/onboarding`
+reaches `app/merchant/onboarding/page.tsx`, as `/merchant/onboarding` does.
+With no `app/merchant/` the subdomain is served by path - the home page - and
+the dev server says "has no app/merchant/ - served by path". Add the
+directory; nothing else. A session shared with the subdomain needs
+`SESSION_DOMAIN=.example.test`.
+
 ## Reading Laravel Data
 
 `rpc()` is a global the renderer installs. Never import it. It works in
@@ -892,6 +905,12 @@ npm run build                    # .output/
 npx rsc-kit-typegen && npx tsc --noEmit   # route types and rpc() names, then the typecheck
 ```
 
+`rsc:install` runs `rsc-kit init` in the terminal, which asks about the React
+Compiler, Tailwind, shadcn/ui and oxlint - never a validation library or typed
+env, since FormRequests and `.env` do both. `composer require` cannot ask.
+Where `resources/css/app.css` imports Tailwind, the `styles.css` init writes
+imports it, and shadcn's `components.json` should name that file.
+
 ## Development
 
 Serve the app through Herd, Valet or PHP-FPM and open its own address. `npm
@@ -903,6 +922,16 @@ waits, starting only when it stops: two at once would share Vite's
 pre-bundle cache and break each other (`ERR_OUTDATED_OPTIMIZED_DEP`).
 `composer dev`, or Herd's `artisan dev`, may already be running one; use it.
 A `vite` that sits waiting is not hung.
+
+A server action that fails in development opens Vite's error overlay with
+Laravel's exception - its class, message and the first frame in `app/` -
+when `APP_DEBUG=true`. Read it there, not as "Server action failed with 500".
+Production answers a bare 500.
+
+Laravel's skeleton ships an empty `public/favicon.ico` and a
+`public/robots.txt`. A file in `public/` is served before the app, so it hides
+`app/favicon.ico` or `app/robots.ts` (Herd answers the empty favicon 404).
+The dev server names it; delete the `public/` one.
 
 `php artisan serve` has one worker by default and cannot do this: the
 proxying request holds it while the page's `rpc()` calls need another. Use
