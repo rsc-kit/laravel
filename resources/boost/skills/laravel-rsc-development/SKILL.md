@@ -150,7 +150,11 @@ hostUrl('merchant', '/orders')    // //merchant.example.test/orders - path typed
 hostUrl(tenant.slug, '/settings') // //testbrand.example.test/settings - any string, path typed by app/[domain]
 hostUrl('acme.com', '/settings')  // //acme.com/settings - a dot means a whole domain
 hostUrl('/pricing')               // //example.test/pricing - back to the site from a subdomain
+hostUrl('/merchant', '/orders')   // the same as 'merchant' (0.35+): the folder written as a path also autocompletes
 ```
+
+Pass `hostUrl(...)` straight to `href`. Wrapped in a template literal it is a
+plain `string`, and the typed path is lost.
 
 The host is the first `rscKit({ hosts })` entry, so it is the `.test` host
 locally and `APP_URL`'s in production. Do not build `//${slug}.${host}` by
@@ -860,6 +864,9 @@ export const contact = defineBlueprint({
   `throttle` to a form worth attacking. Every host call carries the visitor's
   address (`X-Rsc-Client-Ip`), so `$request->ip()` and a throttle are per
   visitor; behind a load balancer set `RSC_TRUST_FORWARDED=1` on the renderer.
+  It carries their browser too (`X-Rsc-Client-User-Agent`, rsc-kit 0.35+), so
+  `$request->userAgent()` in a host call is the visitor's, not the renderer's
+  runtime: log it, or list signed-in devices, as on any request.
 
 **Pages an editor builds** are `definePages` from `@rsc-kit/press/pages`, made
 of `defineBlock` blocks (a schema and a server component each) and served by
