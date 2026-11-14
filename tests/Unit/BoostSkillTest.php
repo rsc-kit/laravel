@@ -101,6 +101,7 @@ dataset('what an agent must be told', [
     'a library that takes a nonce (next-themes) is given useNonce(), a client hook, never a server-read nonce passed down' => ['useNonce()', '@rsc-kit/core/useNonce'],
     'one dev server per app: a second vite waits for the first to stop, and composer dev or Herd may already run one' => ['One dev server per app', 'waits, starting only when it stops'],
     'a subdomain needs the site\'s host named: APP_URL\'s host in rscKit({ hosts }), not APP_URL alone' => ['new URL(env.APP_URL).host', '`APP_URL` alone does not name it'],
+    'a link to a subdomain, a tenant or a custom domain is hostUrl(host, path), typed for that host' => ["hostUrl('merchant', '/orders')", "hostUrl('acme.com', '/settings')", 'hostUrl(\'/pricing\')'],
     'two pages at one url, as two route groups make, stop the build naming both' => ['both the page at'],
     'a subdomain reaches the top-level directory of its name, and with none is served by path, which the dev server says' => ['served by path', 'SESSION_DOMAIN'],
     'rsc:install runs init, which asks about the compiler, Tailwind, shadcn/ui and oxlint, never validation or env' => ['oxlint', 'composer require` cannot ask'],
