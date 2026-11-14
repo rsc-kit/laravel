@@ -366,6 +366,25 @@ It fails closed: only a pipeline that reaches the end lets the page render. A
 middleware that aborts, redirects or errors refuses it. Never put an access
 check in a layout: a navigation skips layouts the browser already holds.
 
+`auth` sends a guest to `route('login')`, as on any Laravel route, and the
+page redirects there. Every page route is named after its path - a parameter
+by its own name - unless the app already gave a route that name:
+`app/login/page.tsx` is `route('login')`, `app/merchant/onboarding/page.tsx` is
+`route('merchant.onboarding')`, `app/orders/[id]/page.tsx` is
+`route('orders.id', $id)`; the root page has no name. With no login page, say
+where guests go in `bootstrap/app.php`, or `auth` fails with "Route [login] not
+defined":
+
+```php
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->redirectGuestsTo('/login');
+})
+```
+
+A route name is a path on the current host. When login lives on another one (a
+`merchant.` subdomain signing in on the main site), give the full url:
+`redirectGuestsTo(fn () => config('app.url').'/login')`.
+
 A query built from `createActionClient().input(schema)` takes that schema's
 input, so a wrong key fails `tsc`. It cannot redirect - a cache library reads
 it, nothing navigates - so refuse with `ServerAuthenticationError` (a 401) and

@@ -41,6 +41,7 @@ abstract class TestCase extends OrchestraTestCase
                 Route::post('/api/health', fn () => 'posted here');
                 Route::get('/login', fn () => 'laravel login');
                 Route::get('/gitlab/connect', fn () => 'laravel gitlab connect');
+                Route::get('/legacy-orders/{id}', fn () => 'mine')->name('orders.id');
             });
         }
     }

@@ -231,13 +231,29 @@ class RscKitServiceProvider extends ServiceProvider
             return;
         }
 
+        // A name the application already gave a route stays its own: a
+        // `login` in routes/web.php is still what route('login') means. The
+        // lookup is built lazily, so it is refreshed before it is asked, and
+        // again after, for the names given here.
+        $routes = Route::getRoutes();
+        $routes->refreshNameLookups();
+        $names = RendererRoutes::names($manifest);
+
         foreach (RendererRoutes::patterns($manifest) as [$pattern, $catchAll, $methods]) {
             $route = Route::addRoute($methods, $pattern, RendererProxy::class)->middleware('web');
 
             foreach ($catchAll as $name) {
                 $route->where($name, '.*');
             }
+
+            $name = in_array('GET', $methods, true) ? ($names[$pattern] ?? null) : null;
+
+            if ($name !== null && ! $routes->hasNamedRoute($name)) {
+                $route->name($name);
+            }
         }
+
+        $routes->refreshNameLookups();
     }
 
     /**

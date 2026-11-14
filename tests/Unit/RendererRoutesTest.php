@@ -45,3 +45,19 @@ test('a table with nothing in it registers nothing', function () {
     expect(RendererRoutes::patterns([]))->toBe([])
         ->and(RendererRoutes::patterns(['routes' => [['segments' => 'nope']]]))->toBe([]);
 });
+
+test('a page is named by its path, a parameter by its name', function () {
+    expect(RendererRoutes::names([
+        'routes' => [
+            ['segments' => []],
+            ['segments' => [['type' => 'static', 'value' => 'login']]],
+            ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'onboarding']]],
+            ['segments' => [['type' => 'static', 'value' => 'orders'], ['type' => 'param', 'value' => 'id']]],
+        ],
+        'apis' => [['segments' => [['type' => 'static', 'value' => 'api']], 'methods' => ['GET']]],
+    ]))->toBe([
+        '/login' => 'login',
+        '/merchant/onboarding' => 'merchant.onboarding',
+        '/orders/{id}' => 'orders.id',
+    ]);
+});

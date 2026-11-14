@@ -55,6 +55,41 @@ final class RendererRoutes
     }
 
     /**
+     * The route name each page answers to, by its pattern.
+     *
+     * Its path with dots for slashes, a parameter by its own name:
+     * app/login/page.tsx is `login`, app/merchant/onboarding is
+     * `merchant.onboarding`, app/orders/[id] is `orders.id`. This is what lets
+     * Laravel's own `route('login')` - which `auth` sends a guest to - find a
+     * login page the React tree has. The root page has no segment to be named
+     * by, and a route.ts is not somewhere a visitor is sent, so neither is
+     * named.
+     *
+     * @param  array<string, mixed>  $manifest
+     * @return array<string, string> pattern => name
+     */
+    public static function names(array $manifest): array
+    {
+        $out = [];
+
+        foreach ($manifest['routes'] ?? [] as $route) {
+            if (! is_array($route) || ! is_array($route['segments'] ?? null) || $route['segments'] === []) {
+                continue;
+            }
+
+            $values = array_map(fn ($segment) => (string) ($segment['value'] ?? ''), $route['segments']);
+
+            if (in_array('', $values, true)) {
+                continue;
+            }
+
+            $out[self::pattern($route['segments'])[0]] = implode('.', $values);
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<array{type?: string, value?: string}>  $segments
      * @return array{0: string, 1: list<string>}
      */
