@@ -121,13 +121,41 @@ A route group adds nothing to the url, so two groups can hold the same page:
 stops naming both ("are both the page at /"). Give one a real directory:
 `(preview)/home/page.tsx`.
 
-A top-level directory is also a subdomain: with `APP_URL` (or `metadataBase`,
-or `rscKit({ hosts })`) naming the site, `merchant.example.test/onboarding`
-reaches `app/merchant/onboarding/page.tsx`, as `/merchant/onboarding` does.
+A top-level directory is also a subdomain: `merchant.example.test/onboarding`
+reaches `app/merchant/onboarding/page.tsx`, as `/merchant/onboarding` does -
+once the site's host is named. `APP_URL` alone does not name it. Pass its
+host to the plugin, which also covers Herd's `example.test`:
+
+```ts
+// vite.config.ts
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  return { plugins: [rscKit({ hosts: [new URL(env.APP_URL).host] }), /* … */] }
+})
+```
+
+A `metadataBase` also names it, but only as a literal, and it is for share
+cards; do not add one for routing.
 With no `app/merchant/` the subdomain is served by path - the home page - and
 the dev server says "has no app/merchant/ - served by path". Add the
 directory; nothing else. A session shared with the subdomain needs
 `SESSION_DOMAIN=.example.test`.
+
+A typed `href` is the folder path, so `<Link href="/merchant/orders">` goes to
+`example.test/merchant/orders`. To link to the subdomain, a tenant or a
+tenant's own domain, use `hostUrl` from `@rsc-kit/core/routes` (0.34+):
+
+```tsx
+hostUrl('merchant', '/orders')    // //merchant.example.test/orders - path typed as the pages under app/merchant
+hostUrl(tenant.slug, '/settings') // //testbrand.example.test/settings - any string, path typed by app/[domain]
+hostUrl('acme.com', '/settings')  // //acme.com/settings - a dot means a whole domain
+hostUrl('/pricing')               // //example.test/pricing - back to the site from a subdomain
+```
+
+The host is the first `rscKit({ hosts })` entry, so it is the `.test` host
+locally and `APP_URL`'s in production. Do not build `//${slug}.${host}` by
+hand or read the request host for links. Both addresses keep working; nothing
+redirects between them.
 
 ## Reading Laravel Data
 
