@@ -13,6 +13,7 @@ use RscKit\Revalidation;
 use RscKit\RouteMiddleware;
 use RscKit\RscRedirectException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
 /**
  * Middleware for a route the engine owns.
@@ -152,6 +153,16 @@ it('lets the exception stand when there is nowhere to send them', function () {
     });
 
     expect(fn () => runner()->run(['needs-auth']))->toThrow(AuthenticationException::class);
+});
+
+it('says how to fix auth sending a guest to a login route the app does not have', function () {
+    // Laravel's default guest redirect is route('login'), asked for before
+    // `auth` refuses - so with no login route the failure named a route and
+    // not the guest. It says what to add now.
+    app('router')->aliasMiddleware('needs-auth', fn () => route('login'));
+
+    expect(fn () => runner()->run(['needs-auth']))
+        ->toThrow(RouteNotFoundException::class, 'redirectGuestsTo');
 });
 
 it('carries middleware arguments through, commas and all', function () {

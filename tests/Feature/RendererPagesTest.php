@@ -12,6 +12,7 @@ file_put_contents($manifest, json_encode([
         ['segments' => [['type' => 'static', 'value' => 'docs'], ['type' => 'catchAll', 'value' => 'rest']]],
         // A dynamic root route, /{team}/{app}: it has every url of two segments.
         ['segments' => [['type' => 'param', 'value' => 'team'], ['type' => 'param', 'value' => 'app']]],
+        ['segments' => [['type' => 'static', 'value' => 'account'], ['type' => 'static', 'value' => 'settings']]],
     ],
     'apis' => [
         ['segments' => [['type' => 'static', 'value' => 'api'], ['type' => 'static', 'value' => 'health']], 'methods' => ['GET']],
@@ -78,4 +79,16 @@ it("leaves the application's own route to it when a dynamic page route would als
     $this->get('/gitlab/connect')->assertOk()->assertSee('laravel gitlab connect');
     // And the page route still takes the urls the app has no route for.
     $this->get('/acme/blog')->assertStatus(502);
+});
+
+// Named by its path, so Laravel's own route('login') - where `auth` sends a
+// guest - finds a login page the tree has, and PHP can link to any page.
+it('names a page route after its path', function () {
+    expect(route('account.settings', absolute: false))->toBe('/account/settings')
+        ->and(route('docs.rest', ['rest' => 'a/b'], absolute: false))->toBe('/docs/a/b');
+});
+
+it('keeps a name the application already gave a route', function () {
+    // Tests\TestCase names its own /legacy-orders/{id} `orders.id`.
+    expect(route('orders.id', ['id' => 7], absolute: false))->toBe('/legacy-orders/7');
 });

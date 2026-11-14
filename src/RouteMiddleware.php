@@ -12,6 +12,7 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Facade;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
 /**
  * Runs a route's middleware, named by a middleware.ts in the app tree.
@@ -81,6 +82,20 @@ class RouteMiddleware
             }
 
             throw $e;
+        } catch (RouteNotFoundException $e) {
+            // Laravel's `auth` asks for route('login') before it refuses, so
+            // an app with no login route fails here, with a message about a
+            // route rather than about the guest it was turning away.
+            if (! str_contains($e->getMessage(), '[login]')) {
+                throw $e;
+            }
+
+            throw new RouteNotFoundException(
+                'Route [login] not defined. `auth` sends a guest to route(\'login\'): add a login page '
+                .'(resources/js/app/login/page.tsx is named login), or say where in bootstrap/app.php '
+                .'with $middleware->redirectGuestsTo(\'/login\').',
+                previous: $e,
+            );
         } finally {
             $this->swapRequest($call);
         }
