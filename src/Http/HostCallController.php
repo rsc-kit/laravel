@@ -26,6 +26,7 @@ class HostCallController
         }
 
         self::believeClientIp($request);
+        self::believeClientUserAgent($request);
 
         // Decoded here rather than through $request->json(), which throws on
         // malformed input and would surface as a 500 — a caller sending
@@ -114,6 +115,26 @@ class HostCallController
             $request->headers->remove($name);
             $request->server->remove('HTTP_'.strtoupper(str_replace('-', '_', $name)));
         }
+    }
+
+    /**
+     * Make `$request->userAgent()` the visitor's.
+     *
+     * The call's own User-Agent is the renderer's runtime, the same for every
+     * visitor, so a log, a list of signed-in devices or an audit entry
+     * recorded one browser for everyone. The renderer sends the visitor's
+     * beside their address, believed on the same terms: past the secret.
+     */
+    public static function believeClientUserAgent(Request $request): void
+    {
+        $agent = trim((string) $request->header(HostCallDispatcher::CLIENT_USER_AGENT_HEADER, ''));
+
+        if ($agent === '') {
+            return;
+        }
+
+        $request->headers->set('User-Agent', $agent);
+        $request->server->set('HTTP_USER_AGENT', $agent);
     }
 
     /**

@@ -48,6 +48,26 @@ function guardPage(array $names, ?array $page, array $headers = []): TestRespons
     return askAsVisitor(['function' => '__rsc.middleware', 'args' => $args], $headers);
 }
 
+describe('the visitor\'s User-Agent', function () {
+    it('is what $request->userAgent() answers, not the renderer\'s', function () {
+        app()->forgetInstance(HostCallDispatcher::class);
+        app(CallableRegistry::class)->register('Who.agent', fn () => request()->userAgent());
+
+        askAsVisitor(['function' => 'Who.agent', 'args' => []], [
+            'User-Agent' => 'Bun/1.3',
+            HostCallDispatcher::CLIENT_USER_AGENT_HEADER => 'Mozilla/5.0 (Visitor)',
+        ])->assertOk()->assertJson(['result' => 'Mozilla/5.0 (Visitor)']);
+    });
+
+    it('leaves the call\'s own when none was sent', function () {
+        app()->forgetInstance(HostCallDispatcher::class);
+        app(CallableRegistry::class)->register('Who.agent', fn () => request()->userAgent());
+
+        askAsVisitor(['function' => 'Who.agent', 'args' => []], ['User-Agent' => 'Bun/1.3'])
+            ->assertJson(['result' => 'Bun/1.3']);
+    });
+});
+
 describe('the visitor\'s address', function () {
     it('is what $request->ip() answers, not the renderer\'s', function () {
         app()->forgetInstance(HostCallDispatcher::class);
