@@ -36,6 +36,9 @@ class HostCallDispatcher
     /** The visitor's address, which the renderer's server saw and this call did not. */
     public const CLIENT_IP_HEADER = 'X-Rsc-Client-Ip';
 
+    /** The visitor's User-Agent: this call's own is the renderer's runtime. */
+    public const CLIENT_USER_AGENT_HEADER = 'X-Rsc-Client-User-Agent';
+
     /** The most calls one batch may carry: the engine's own BATCH_LIMIT. */
     public const BATCH_LIMIT = 50;
 

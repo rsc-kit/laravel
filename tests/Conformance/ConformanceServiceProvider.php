@@ -74,6 +74,7 @@ class ConformanceServiceProvider extends ServiceProvider
         $registry->register('Conformance.authorization', fn (): ?string => request()->header('Authorization'));
         $registry->register('Conformance.cookie', fn (): ?string => request()->header('Cookie'));
         $registry->register('Conformance.ip', fn (): ?string => request()->ip());
+        $registry->register('Conformance.userAgent', fn (): ?string => request()->userAgent());
         $registry->register('Conformance.login', function (): string {
             Cookie::queue('conformance_login', '1');
 
