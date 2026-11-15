@@ -13,8 +13,8 @@ use RscKit\RetryPurge;
 use RscKit\Rsc;
 
 /**
- * Rsc::changed() tells the CDN keeping pages - Homeport, where
- * RSC_PURGE_URL is set - once the change is made and the answer has gone.
+ * Rsc::changed() tells the CDN keeping pages, where
+ * CDN_PURGE_URL is set, once the change is made and the answer has gone.
  */
 beforeEach(function () {
     Cache::flush();
@@ -74,9 +74,10 @@ it('waits for the transaction to commit', function () {
     Http::assertSent(fn (Request $request) => $request->data() === ['tags' => ['posts']]);
 });
 
-it('reads RSC_PURGE_URL, before the HOMEPORT_PURGE_URL Homeport sets', function () {
+// One name. A platform's own variable is the platform's to map onto it.
+it('reads CDN_PURGE_URL, and neither name it used to', function () {
     $read = function (array $env) {
-        foreach (['RSC_PURGE_URL', 'HOMEPORT_PURGE_URL'] as $name) {
+        foreach (['CDN_PURGE_URL', 'RSC_PURGE_URL', 'HOMEPORT_PURGE_URL'] as $name) {
             unset($_ENV[$name], $_SERVER[$name]);
         }
 
@@ -87,16 +88,18 @@ it('reads RSC_PURGE_URL, before the HOMEPORT_PURGE_URL Homeport sets', function 
         try {
             return (require __DIR__.'/../../config/rsc.php')['purge_url'];
         } finally {
-            unset($_ENV['RSC_PURGE_URL'], $_SERVER['RSC_PURGE_URL'], $_ENV['HOMEPORT_PURGE_URL'], $_SERVER['HOMEPORT_PURGE_URL']);
+            foreach (['CDN_PURGE_URL', 'RSC_PURGE_URL', 'HOMEPORT_PURGE_URL'] as $name) {
+                unset($_ENV[$name], $_SERVER[$name]);
+            }
         }
     };
 
-    expect($read(['RSC_PURGE_URL' => 'http://edge.test/', 'HOMEPORT_PURGE_URL' => 'http://homeport.test/']))->toBe('http://edge.test/')
-        ->and($read(['HOMEPORT_PURGE_URL' => 'http://homeport.test/']))->toBe('http://homeport.test/')
+    expect($read(['CDN_PURGE_URL' => 'http://edge.test/', 'HOMEPORT_PURGE_URL' => 'http://homeport.test/']))->toBe('http://edge.test/')
+        ->and($read(['HOMEPORT_PURGE_URL' => 'http://homeport.test/', 'RSC_PURGE_URL' => 'http://rsc.test/']))->toBeNull()
         ->and($read([]))->toBeNull();
 });
 
-it('purges nothing without RSC_PURGE_URL', function () {
+it('purges nothing without CDN_PURGE_URL', function () {
     config()->set('rsc.purge_url', null);
     app()->forgetInstance(Purge::class);
 
