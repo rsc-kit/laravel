@@ -239,8 +239,21 @@ class RscKitServiceProvider extends ServiceProvider
         $routes->refreshNameLookups();
         $names = RendererRoutes::names($manifest);
 
+        // rscKit({ subdomains }) names the folders whose subdomain is their only
+        // url, and the build writes them into the table. Their pages are routes
+        // on that subdomain without the folder, so route('merchant.onboarding')
+        // is merchant.example.com/onboarding: as a path on the subdomain it was
+        // merchant/merchant/onboarding to the renderer.
+        $site = parse_url((string) config('app.url'), PHP_URL_HOST) ?: null;
+        $subdomains = array_values(array_filter((array) ($manifest['build']['subdomains'] ?? []), fn ($label) => is_string($label) && $label !== ''));
+
         foreach (RendererRoutes::patterns($manifest) as [$pattern, $catchAll, $methods]) {
-            $route = Route::addRoute($methods, $pattern, RendererProxy::class)->middleware('web');
+            [$domain, $uri] = RendererRoutes::placement($pattern, $subdomains, $site);
+            $route = Route::addRoute($methods, $uri, RendererProxy::class)->middleware('web');
+
+            if ($domain !== null) {
+                $route->domain($domain);
+            }
 
             foreach ($catchAll as $name) {
                 $route->where($name, '.*');

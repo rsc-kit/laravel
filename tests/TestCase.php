@@ -28,6 +28,7 @@ abstract class TestCase extends OrchestraTestCase
         // as an environment variable the file sets at load.
         if ($manifest = getenv('RSC_TEST_ROUTES_MANIFEST')) {
             $app['config']->set('rsc.routes_manifest', $manifest);
+            $app['config']->set('app.url', 'http://example.test');
 
             // The application's own routes, the way routes/web.php arrives:
             // in a booted callback registered before the package's, since the

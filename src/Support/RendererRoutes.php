@@ -90,6 +90,26 @@ final class RendererRoutes
     }
 
     /**
+     * Where a page route is registered: a pattern under a folder the build
+     * lists in `build.subdomains` (rscKit({ subdomains })) moves to that subdomain of the site, without the
+     * directory. /merchant/onboarding is merchant.example.com and /onboarding;
+     * /merchant is merchant.example.com and /.
+     *
+     * @param  list<string>  $subdomains
+     * @return array{0: ?string, 1: string} domain, or null for the current host; uri
+     */
+    public static function placement(string $pattern, array $subdomains, ?string $site): array
+    {
+        $parts = explode('/', ltrim($pattern, '/'), 2);
+
+        if ($site === null || $site === '' || ! in_array($parts[0], $subdomains, true)) {
+            return [null, $pattern];
+        }
+
+        return [$parts[0].'.'.$site, '/'.($parts[1] ?? '')];
+    }
+
+    /**
      * @param  list<array{type?: string, value?: string}>  $segments
      * @return array{0: string, 1: list<string>}
      */
