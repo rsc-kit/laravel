@@ -111,3 +111,10 @@ it('puts a page under a directory named in rsc.subdomains on that subdomain', fu
     $this->get('http://merchant.example.test/onboarding')->assertStatus(502);
     $this->get('http://merchant.example.test/orders/7')->assertStatus(502);
 });
+
+// The path form is still the renderer's: no route of Laravel's has it, so the
+// fallback hands it on, and the renderer answers it as it always did.
+it('still hands the path form of a subdomain page to the renderer', function () {
+    $this->get('http://example.test/merchant/onboarding')->assertStatus(502);
+    $this->get('http://example.test/merchant')->assertStatus(502);
+});
