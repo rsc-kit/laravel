@@ -13,6 +13,10 @@ file_put_contents($manifest, json_encode([
         // A dynamic root route, /{team}/{app}: it has every url of two segments.
         ['segments' => [['type' => 'param', 'value' => 'team'], ['type' => 'param', 'value' => 'app']]],
         ['segments' => [['type' => 'static', 'value' => 'account'], ['type' => 'static', 'value' => 'settings']]],
+        // Under a directory named in rsc.subdomains (Tests\TestCase: merchant).
+        ['segments' => [['type' => 'static', 'value' => 'merchant']]],
+        ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'onboarding']]],
+        ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'orders'], ['type' => 'param', 'value' => 'id']]],
     ],
     'apis' => [
         ['segments' => [['type' => 'static', 'value' => 'api'], ['type' => 'static', 'value' => 'health']], 'methods' => ['GET']],
@@ -91,4 +95,19 @@ it('names a page route after its path', function () {
 it('keeps a name the application already gave a route', function () {
     // Tests\TestCase names its own /legacy-orders/{id} `orders.id`.
     expect(route('orders.id', ['id' => 7], absolute: false))->toBe('/legacy-orders/7');
+});
+
+// The renderer serves app/merchant/onboarding on both forms, and route() can
+// build only one. With merchant in rsc.subdomains it is the subdomain's: built
+// as /merchant/onboarding on merchant.example.test, the renderer read it as
+// merchant/merchant/onboarding.
+it('puts a page under a directory named in rsc.subdomains on that subdomain', function () {
+    expect(route('merchant.onboarding'))->toBe('http://merchant.example.test/onboarding')
+        ->and(route('merchant'))->toBe('http://merchant.example.test')
+        ->and(route('merchant.orders.id', ['id' => 7]))->toBe('http://merchant.example.test/orders/7')
+        // Every other page is still a path on the current host.
+        ->and(route('account.settings', absolute: false))->toBe('/account/settings');
+
+    $this->get('http://merchant.example.test/onboarding')->assertStatus(502);
+    $this->get('http://merchant.example.test/orders/7')->assertStatus(502);
 });

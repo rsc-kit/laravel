@@ -64,6 +64,16 @@ return [
     'routes_manifest' => env('RSC_ROUTES_MANIFEST', base_path('bootstrap/rsc/vite/routes.json')),
 
     /*
+     * Top-level directories of the React tree served on their own subdomain:
+     * ['merchant'] puts resources/js/app/merchant/onboarding on
+     * merchant.<APP_URL's host>/onboarding, and route('merchant.onboarding')
+     * builds that url. The renderer answers either form; this says which one
+     * Laravel's routes and route() use. Without it a page route is a path on
+     * the current host, and route('merchant.onboarding') is /merchant/onboarding.
+     */
+    'subdomains' => [],
+
+    /*
      * Where the server actions live - the classes the build writes a
      * "use server" stub for, which `rsc:host-manifest` writes to rsc-host.json. The functions a
      * server component reaches through rpc() are found under app/Rsc as a

@@ -17,6 +17,7 @@ $skill = preg_replace('/\s+/', ' ', file_get_contents(dirname(__DIR__, 2).'/reso
 dataset('what an agent must be told', [
     'auth sends a guest to route(\'login\'); without a login page, redirectGuestsTo says where' => ['redirectGuestsTo'],
     'every page route is named after its path, unless the app already used the name' => ['route(\'merchant.onboarding\')'],
+    'rsc.subdomains puts a directory\'s page routes on its subdomain, so route() builds that url' => ["'subdomains' => ['merchant']"],
     'Rsc::refuse declines on purpose, with data' => ['Rsc::refuse('],
     'a refusal keeps its message, and a bare abort() says "Refused."' => ['Refused.'],
     'through a generated stub only the message arrives' => ['Through a generated stub'],

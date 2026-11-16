@@ -381,8 +381,20 @@ defined":
 })
 ```
 
-A route name is a path on the current host. When login lives on another one (a
-`merchant.` subdomain signing in on the main site), give the full url:
+A route name is a path on the current host, so on `merchant.example.test`
+`route('merchant.onboarding')` is `/merchant/onboarding` there - the
+subdomain's `merchant/merchant/onboarding`. Name the directories served on
+their own subdomain in `config/rsc.php`, and their pages are registered there,
+without the directory:
+
+```php
+'subdomains' => ['merchant'],
+// route('merchant.onboarding') is https://merchant.example.test/onboarding
+// route('merchant.login')      is https://merchant.example.test/login
+```
+
+The subdomain's host is `merchant.` and `APP_URL`'s. When login lives on the
+main site instead (a `merchant.` subdomain signing in there), give the full url:
 `redirectGuestsTo(fn () => config('app.url').'/login')`.
 
 A query built from `createActionClient().input(schema)` takes that schema's

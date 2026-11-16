@@ -239,8 +239,22 @@ class RscKitServiceProvider extends ServiceProvider
         $routes->refreshNameLookups();
         $names = RendererRoutes::names($manifest);
 
+        // The renderer serves app/merchant/onboarding at both
+        // example.com/merchant/onboarding and merchant.example.com/onboarding,
+        // and nothing in the table says which the app means. A path was the
+        // only guess, so route('merchant.onboarding') built /merchant/onboarding
+        // on the subdomain - a url that is merchant/merchant/onboarding to the
+        // renderer. rsc.subdomains is the app saying.
+        $site = parse_url((string) config('app.url'), PHP_URL_HOST) ?: null;
+        $subdomains = array_values(array_filter((array) config('rsc.subdomains', []), fn ($label) => is_string($label) && $label !== ''));
+
         foreach (RendererRoutes::patterns($manifest) as [$pattern, $catchAll, $methods]) {
-            $route = Route::addRoute($methods, $pattern, RendererProxy::class)->middleware('web');
+            [$domain, $uri] = RendererRoutes::placement($pattern, $subdomains, $site);
+            $route = Route::addRoute($methods, $uri, RendererProxy::class)->middleware('web');
+
+            if ($domain !== null) {
+                $route->domain($domain);
+            }
 
             foreach ($catchAll as $name) {
                 $route->where($name, '.*');
