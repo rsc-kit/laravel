@@ -666,7 +666,13 @@ export function NewOrder() {
   `route.ts` that a browser sends from another site is answered 403 before the
   handler runs; a webhook or a server sends neither header and is never
   refused. Another origin that should post is named with
-  `rscKit({ trustedOrigins: ['https://admin.example.com'] })`.
+  `rscKit({ trustedOrigins: ['https://admin.example.com'] })`. A `route.ts`
+  that any site posts to from the browser - an embedded widget whose allowed
+  sites are rows in your database - says `export const crossOrigin = true`
+  (0.39+). Another site's request then reaches it **without the visitor's
+  cookies**, so `auth()->user()` is null behind it: authenticate with a key the
+  caller sends, check `Origin` yourself, and export `OPTIONS` for the preflight.
+  An api Laravel answers itself (`routes/api.php`) never meets this guard.
 
 ## Admin Panels
 
