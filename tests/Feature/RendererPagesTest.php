@@ -6,6 +6,8 @@
 $manifest = sys_get_temp_dir().'/rsc-routes-'.getmypid().'.json';
 
 file_put_contents($manifest, json_encode([
+    // rscKit({ subdomains: ['merchant'] }), as the build writes it.
+    'build' => ['subdomains' => ['merchant']],
     'routes' => [
         ['segments' => []],
         ['segments' => [['type' => 'static', 'value' => 'orders'], ['type' => 'param', 'value' => 'id']]],
@@ -13,7 +15,7 @@ file_put_contents($manifest, json_encode([
         // A dynamic root route, /{team}/{app}: it has every url of two segments.
         ['segments' => [['type' => 'param', 'value' => 'team'], ['type' => 'param', 'value' => 'app']]],
         ['segments' => [['type' => 'static', 'value' => 'account'], ['type' => 'static', 'value' => 'settings']]],
-        // Under a directory named in rsc.subdomains (Tests\TestCase: merchant).
+        // Under a folder the build lists in subdomains.
         ['segments' => [['type' => 'static', 'value' => 'merchant']]],
         ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'onboarding']]],
         ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'orders'], ['type' => 'param', 'value' => 'id']]],
@@ -98,10 +100,10 @@ it('keeps a name the application already gave a route', function () {
 });
 
 // The renderer serves app/merchant/onboarding on both forms, and route() can
-// build only one. With merchant in rsc.subdomains it is the subdomain's: built
+// build only one. With merchant in rscKit({ subdomains }) it is the subdomain's: built
 // as /merchant/onboarding on merchant.example.test, the renderer read it as
 // merchant/merchant/onboarding.
-it('puts a page under a directory named in rsc.subdomains on that subdomain', function () {
+it('puts a page under a folder the build lists in subdomains on that subdomain', function () {
     expect(route('merchant.onboarding'))->toBe('http://merchant.example.test/onboarding')
         ->and(route('merchant'))->toBe('http://merchant.example.test')
         ->and(route('merchant.orders.id', ['id' => 7]))->toBe('http://merchant.example.test/orders/7')

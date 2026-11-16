@@ -88,6 +88,11 @@ fails and nothing happens on the tap. The prefixes are written into
 `rsc-routes.d.ts`, so `redirect('/auth/github')` needs no cast (`/authors` is
 still refused). A redirect to another site works as written.
 
+A whole segment in brackets is any one segment, for a Socialite route:
+`backendPaths: ['/login/[provider]']` is `/login/google` and what is under it,
+not `/login` itself, so the login page stays a page. Not the first segment, and
+a page it would cover stops dev and the build.
+
 There is no PHP-side rendering, no socket, no `route.php` and no worker for
 PHP to supervise. Do not write any of those.
 
@@ -382,19 +387,23 @@ defined":
 ```
 
 A route name is a path on the current host, so on `merchant.example.test`
-`route('merchant.onboarding')` is `/merchant/onboarding` there - the
-subdomain's `merchant/merchant/onboarding`. Name the directories served on
-their own subdomain in `config/rsc.php`, and their pages are registered there,
-without the directory:
+`route('merchant.onboarding')` would be `/merchant/onboarding` there - the
+subdomain's `merchant/merchant/onboarding`. When a folder only lives on its
+subdomain, name it in the plugin (0.38+), next to `hosts`:
 
-```php
-'subdomains' => ['merchant'],
-// route('merchant.onboarding') is https://merchant.example.test/onboarding
-// route('merchant.login')      is https://merchant.example.test/login
+```ts
+rscKit({ hosts: [new URL(env.APP_URL).host], subdomains: ['merchant'] })
 ```
 
-The subdomain's host is `merchant.` and `APP_URL`'s. When login lives on the
-main site instead (a `merchant.` subdomain signing in there), give the full url:
+Then its pages are routes on the subdomain, without the folder:
+`route('merchant.onboarding')` is `https://merchant.example.test/onboarding`.
+`example.test/merchant/onboarding` answers 301 to it, and `<Link
+href="/merchant/orders">`, `visit()` and `redirect()` go to the subdomain with
+no `hostUrl`. `example.test/merchant` is then the subdomain's home, not a page
+of the site - put a landing page in its own folder (`app/sell/`).
+
+When login lives on the main site instead (a `merchant.` subdomain signing in
+there), give the full url:
 `redirectGuestsTo(fn () => config('app.url').'/login')`.
 
 A query built from `createActionClient().input(schema)` takes that schema's
@@ -983,11 +992,12 @@ Serve the app through Herd, Valet or PHP-FPM and open its own address. `npm
 run dev` writes `public/rsc-hot`, and Laravel hands every url it does not
 route to the dev server.
 
-One dev server per app. A second `vite` in the same app names the first and
-waits, starting only when it stops: two at once would share Vite's
-pre-bundle cache and break each other (`ERR_OUTDATED_OPTIMIZED_DEP`).
-`composer dev`, or Herd's `artisan dev`, may already be running one; use it.
-A `vite` that sits waiting is not hung.
+One dev server per app. A second `vite` in the same app names the first:
+two at once would share Vite's pre-bundle cache and break each other
+(`ERR_OUTDATED_OPTIMIZED_DEP`). In a terminal it exits, saying where the first
+one is; under a runner (`composer dev`, Herd's `artisan dev`) it waits and
+starts when the first stops, so a `vite` that sits waiting there is not hung.
+`composer dev` may already be running one; use it.
 
 A server action that fails in development opens Vite's error overlay with
 Laravel's exception - its class, message and the first frame in `app/` -

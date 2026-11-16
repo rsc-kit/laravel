@@ -90,8 +90,8 @@ final class RendererRoutes
     }
 
     /**
-     * Where a page route is registered: a pattern under a directory named in
-     * `rsc.subdomains` moves to that subdomain of the site, without the
+     * Where a page route is registered: a pattern under a folder the build
+     * lists in `build.subdomains` (rscKit({ subdomains })) moves to that subdomain of the site, without the
      * directory. /merchant/onboarding is merchant.example.com and /onboarding;
      * /merchant is merchant.example.com and /.
      *
