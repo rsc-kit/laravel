@@ -115,6 +115,7 @@ dataset('what an agent must be told', [
     'init\'s styles.css imports resources/css/app.css where it imports Tailwind' => ['resources/css/app.css'],
     'a failed action in development opens the error overlay with Laravel\'s exception' => ['error overlay', 'APP_DEBUG=true'],
     'a public/ file hides the app\'s favicon.ico or robots, and Laravel ships an empty one' => ['public/favicon.ico'],
+    '<Form> checks a changed field with a FormRequest\'s rules when it is left, never running the method, and validate() asks at any other moment' => ['validate(', '`FormRequest`', 'isPrecognitive()'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {

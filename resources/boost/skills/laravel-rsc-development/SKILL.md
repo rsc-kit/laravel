@@ -657,6 +657,19 @@ export function NewOrder() {
 - `optimistic={(data) => addOptimistic(data)}` pairs with React's
   `useOptimistic`; a failure takes it back.
 - `resetOnSuccess` is on by default.
+- A field is checked with Laravel when it is left having changed (0.40+):
+  Precognition, with nothing to add. An action whose first parameter is a
+  `FormRequest` runs its `authorize()` and `rules()` for that field only, the
+  method is never called, and the message lands on `error()`. Keep validation
+  in the form request - rules written inside the method can only be checked by
+  running it, so that action is never asked. A rule that must skip a check
+  (a slow lookup) can read `$this->isPrecognitive()`. For a wizard's step or
+  any other moment, the render prop and `useForm()` have
+  `validate('email', 'name')` (resolves `true` on a pass; none = every field,
+  `items.*.sku` for one segment), `validating` and `valid('email')`:
+  `onClick={async () => (await validate('email')) && setStep(2)}`. Keep every
+  step's fields in the form (hidden, not unmounted) so the last submit sends
+  them. There is no `usePrecognition` and no `laravel-precognition` package.
 - From a button rather than a form, use `useAction` from
   `@rsc-kit/core/useAction`: `execute`, `isPending`, `onSuccess`, `onError`
   and an `optimistic` option.
