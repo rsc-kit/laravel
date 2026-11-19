@@ -62,6 +62,9 @@ class RscHostManifestCommand extends Command
                 'functions' => $functions,
                 'types' => (object) $types,
                 'defs' => (object) $defs,
+                // What can be checked without running: a form request's
+                // rules, filtered to the fields a form names, before submit.
+                'validates' => CallableRegistry::validating($callables),
             ],
             JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
         );

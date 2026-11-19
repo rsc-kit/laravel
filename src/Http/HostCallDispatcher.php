@@ -120,8 +120,16 @@ class HostCallDispatcher
             ) : sprintf('No host function named "%s".', $name));
         }
 
+        // A check rather than a run: the fields to validate, every one when
+        // the list is empty. See CallableRegistry::execute().
+        $validate = $body['validate'] ?? null;
+
+        if ($validate !== null && (! is_array($validate) || ! array_is_list($validate) || array_filter($validate, fn ($field) => ! is_string($field)) !== [])) {
+            return $this->fail(400, 'A host call\'s "validate" must be a list of field names.');
+        }
+
         try {
-            $result = $this->jsonReady($this->registry->execute($name, array_values($args)));
+            $result = $this->jsonReady($this->registry->execute($name, array_values($args), $validate));
         } catch (ValidationException $e) {
             // A refusal is an answer, not a failure. It travels in its own
             // field so the renderer never has to read a message to tell an

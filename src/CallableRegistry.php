@@ -24,6 +24,7 @@ use RscKit\Attributes\Can;
 use RscKit\Support\ActionManifest;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\InputBag;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class CallableRegistry
 {
@@ -130,13 +131,36 @@ class CallableRegistry
      * @throws AuthenticationException
      * @throws AuthorizationException
      */
-    public function execute(string $name, array $args): mixed
+    public function execute(string $name, array $args, ?array $validate = null): mixed
     {
         if (! isset($this->callables[$name])) {
             throw new RuntimeException("RSC callable not found: \"{$name}\"");
         }
 
         $callable = $this->callables[$name];
+
+        // Checked, not run - Laravel's Precognition. Everything up to the
+        // call happens as it would: the attributes' guards, then the form
+        // request's authorize() and rules, filtered to the fields named.
+        // Then nothing: a null result is the fields passing, and a refusal
+        // is the ValidationException it always was.
+        if ($validate !== null) {
+            if (! self::validatesEarly($callable)) {
+                throw new RuntimeException("\"{$name}\" takes no form request, so it cannot be checked without running.");
+            }
+
+            if (is_string($callable)) {
+                $this->authorize($callable, '__invoke');
+                $this->resolveFormRequest(new ReflectionMethod($callable, '__invoke'), $args, $validate);
+            } elseif (is_array($callable)) {
+                $this->authorize($callable[0], $callable[1]);
+                $this->resolveFormRequest(new ReflectionMethod($callable[0], $callable[1]), $args, $validate);
+            } else {
+                $this->resolveFormRequest(new ReflectionFunction($callable), $args, $validate);
+            }
+
+            return null;
+        }
 
         if ($callable instanceof Closure) {
             return $callable(...$this->resolveFormRequest(new ReflectionFunction($callable), $args));
@@ -160,6 +184,48 @@ class CallableRegistry
         }
 
         throw new RuntimeException("Invalid callable configuration for \"{$name}\"");
+    }
+
+    /**
+     * Whether a callable can be checked without running: its first parameter
+     * is a form request, which is where its validation is. Validation written
+     * inside the method runs only by running it.
+     *
+     * @param  array{class-string, string}|class-string|Closure  $callable
+     */
+    public static function validatesEarly(array|string|Closure $callable): bool
+    {
+        try {
+            $reflection = match (true) {
+                $callable instanceof Closure => new ReflectionFunction($callable),
+                is_string($callable) => new ReflectionMethod($callable, '__invoke'),
+                default => new ReflectionMethod($callable[0], $callable[1]),
+            };
+        } catch (\ReflectionException) {
+            return false;
+        }
+
+        $type = ($reflection->getParameters()[0] ?? null)?->getType();
+
+        return $type instanceof ReflectionNamedType
+            && ! $type->isBuiltin()
+            && is_subclass_of($type->getName(), FormRequest::class);
+    }
+
+    /**
+     * The names of the registered callables that can be checked without
+     * running - see validatesEarly().
+     *
+     * @param  array<string, array{class-string, string}|class-string|Closure>  $callables
+     * @return list<string>
+     */
+    public static function validating(array $callables): array
+    {
+        $names = array_keys(array_filter($callables, self::validatesEarly(...)));
+
+        sort($names);
+
+        return $names;
     }
 
     /**
@@ -324,7 +390,7 @@ class CallableRegistry
      * @param  array<int|string, mixed>  $args
      * @return array<int, mixed>
      */
-    private function resolveFormRequest(ReflectionFunctionAbstract $callable, array $args): array
+    private function resolveFormRequest(ReflectionFunctionAbstract $callable, array $args, ?array $validate = null): array
     {
         $params = $callable->getParameters();
 
@@ -365,9 +431,34 @@ class CallableRegistry
         // would fill it from the shared request and validate that before
         // this one could be handed over. The rest is what Laravel does to a
         // form request it resolves: authorize(), then rules().
+        // A check is a precognitive request, as Laravel's own middleware
+        // marks one: the form request filters its rules to the fields named
+        // and answers 204 when they pass, and a rules() that asks
+        // isPrecognitive() is answered truthfully. No fields named is every
+        // rule, as a precognitive request with no Validate-Only header is.
+        if ($validate !== null) {
+            $callRequest->attributes->set('precognitive', true);
+            $callRequest->headers->set('Precognition', 'true');
+
+            if ($validate !== []) {
+                $callRequest->headers->set('Precognition-Validate-Only', implode(',', $validate));
+            }
+        }
+
         $formRequest = FormRequest::createFrom($callRequest, $this->container->build($typeName));
         $formRequest->setContainer($this->container)->setRedirector($this->container->make(Redirector::class));
-        $formRequest->validateResolved();
+
+        try {
+            $formRequest->validateResolved();
+        } catch (HttpException $e) {
+            // Precognition's way of saying the fields passed: abort(204)
+            // from the validator's after hook. Here it is a null result.
+            if ($validate !== null && $e->getStatusCode() === 204) {
+                return [$formRequest, ...$rest];
+            }
+
+            throw $e;
+        }
 
         return [$formRequest, ...$rest];
     }
