@@ -233,6 +233,6 @@ namespace {
 
         $manifest = json_decode(Artisan::output(), true);
 
-        expect($manifest)->toHaveKeys(['actions', 'functions', 'types', 'defs']);
+        expect($manifest)->toHaveKeys(['actions', 'functions', 'types', 'defs', 'validates']);
     });
 }
