@@ -12,9 +12,11 @@ use RscKit\Versions;
 /**
  * Hands the build what this backend offers the app, as rsc-host.json:
  *
- *     { "actions": { "ordersCreate": "Orders.create" }, "functions": ["Orders.create", "Orders.recent"] }
+ *     { "actions": { "orders": { "create": "Orders.create" } }, "functions": ["Orders.create", "Orders.recent"] }
  *
- * `actions` are the server actions the build writes "use server" stubs for.
+ * `actions` are the server actions, by module - one per class - and export:
+ * the build writes each module as server-actions/orders.ts, a "use server"
+ * module exporting `create`.
  * `functions` are the names rpc() may be called with, which the build turns
  * into a type, so a misspelt one fails the typecheck.
  *
@@ -54,11 +56,11 @@ class RscHostManifestCommand extends Command
         // stubs are typed from the PHP signatures.
         ['types' => $types, 'defs' => $defs] = HostTypes::describe($callables);
 
-        // As an object even when empty: json_encode writes an empty PHP array
-        // as [], and the build reads a map of actions.
+        // As objects even when empty: json_encode writes an empty PHP array
+        // as [], and the build reads a map of modules, each a map of exports.
         $json = json_encode(
             [
-                'actions' => (object) $actions,
+                'actions' => (object) array_map(fn (array $exports) => (object) $exports, $actions),
                 'functions' => $functions,
                 'types' => (object) $types,
                 'defs' => (object) $defs,
@@ -77,7 +79,7 @@ class RscHostManifestCommand extends Command
 
         file_put_contents(base_path('rsc-host.json'), $json."\n");
 
-        $this->info(sprintf('Wrote %d action(s) and %d function(s) to rsc-host.json', count($actions), count($functions)));
+        $this->info(sprintf('Wrote %d action(s) and %d function(s) to rsc-host.json', array_sum(array_map('count', $actions)), count($functions)));
 
         return self::SUCCESS;
     }

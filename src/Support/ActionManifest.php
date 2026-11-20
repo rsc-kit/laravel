@@ -3,24 +3,29 @@
 namespace RscKit\Support;
 
 use FilesystemIterator;
+use Illuminate\Support\Str;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionMethod;
+use RuntimeException;
 
 /**
- * Maps the app's PHP action classes to the JS function names generated for them.
+ * Maps the app's PHP action classes to the JS modules generated for them.
  *
- * Shared by `rsc:action-manifest` and the build, so the names the build writes
- * are always the names the manifest reports.
+ * One module per class, at its path under the actions directory in kebab
+ * case: App\Rsc\Actions\Billing\Invoices is `billing/invoices`, its `create`
+ * method that module's `create` export, and an `__invoke` its default export.
+ * The build writes each as `server-actions/billing/invoices.ts`.
  */
 class ActionManifest
 {
     /**
-     * Every public instance method of every class in the actions dir, keyed by
-     * the JS function name it is exposed as.
+     * Every public instance method of every class in the actions dir: by
+     * module, then by the name the module exports it under, the function the
+     * endpoint answers it with.
      *
-     * @return array<string, string>
+     * @return array<string, array<string, string>>
      */
     public static function discover(): array
     {
@@ -31,6 +36,8 @@ class ActionManifest
         }
 
         $actions = [];
+        $owners = [];
+        $answeredBy = [];
 
         foreach (self::phpFilesUnder($directory) as $file) {
             $className = self::classIn($file);
@@ -46,7 +53,17 @@ class ActionManifest
             }
 
             $shortName = $reflection->getShortName();
-            $baseName = preg_replace('/Callable$/', '', $shortName);
+            $module = self::moduleFor($directory, $file, preg_replace('/Callable$/', '', $shortName));
+
+            if (isset($actions[$module])) {
+                throw new RuntimeException(sprintf(
+                    '%s and %s would both be the module server-actions/%s. Rename one.',
+                    $owners[$module], $className, $module,
+                ));
+            }
+
+            $owners[$module] = $className;
+            $actions[$module] = [];
 
             foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
                 // Magic methods are PHP's, not the app's: __call would take any name
@@ -57,20 +74,48 @@ class ActionManifest
                 }
 
                 $methodName = $method->getName();
+                [$export, $callable] = $methodName === '__invoke'
+                    ? ['default', $shortName]
+                    : [$methodName, "{$shortName}.{$methodName}"];
 
-                if ($methodName === '__invoke') {
-                    $jsName = lcfirst($baseName);
-                    $phpCallable = $shortName;
-                } else {
-                    $jsName = lcfirst($baseName).ucfirst($methodName);
-                    $phpCallable = "{$shortName}.{$methodName}";
+                // The endpoint answers a name with the first class that has
+                // it, so a second would post to the first one's method.
+                if (isset($answeredBy[$callable])) {
+                    throw new RuntimeException(sprintf(
+                        '%s and %s are both %s to the endpoint, which would answer both with the first. Rename one.',
+                        $answeredBy[$callable], $className, $callable,
+                    ));
                 }
 
-                $actions[$jsName] = $phpCallable;
+                if (isset($actions[$module][$export])) {
+                    throw new RuntimeException("{$className} has both __invoke and a method named default: the module exports one default. Rename the method.");
+                }
+
+                $answeredBy[$callable] = $className;
+                $actions[$module][$export] = $callable;
+            }
+
+            if ($actions[$module] === []) {
+                unset($actions[$module]);
             }
         }
 
         return $actions;
+    }
+
+    /**
+     * A class's module: its folder under the actions dir and its name, each
+     * in kebab case - Billing/SendInvoice is billing/send-invoice.
+     */
+    private static function moduleFor(string $directory, string $file, string $baseName): string
+    {
+        $folder = trim(str_replace('\\', '/', substr(dirname($file), strlen(rtrim($directory, '/\\')))), '/');
+        $parts = [...($folder === '' ? [] : explode('/', $folder)), $baseName];
+
+        return implode('/', array_map(
+            fn (string $part) => trim(preg_replace('/[^a-z0-9]+/', '-', Str::kebab($part)), '-'),
+            $parts,
+        ));
     }
 
     /**

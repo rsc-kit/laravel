@@ -23,6 +23,12 @@ use RscKit\RscKitServiceProvider;
  */
 class MakeActionCommand extends Command
 {
+    /** Words JavaScript keeps, which an import cannot bind. */
+    private const JS_RESERVED = ['break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'let', 'static', 'implements', 'interface', 'package', 'private', 'protected', 'public', 'await', 'arguments', 'eval'];
+
+    /** The class's module under server-actions/: Billing/SendInvoice is billing/send-invoice. */
+    private string $module = '';
+
     protected $signature = 'make:rsc-action
         {name : The class name, StudlyCase; a slash nests it (Billing/Invoices)}
         {--rpc : A class for rpc() under app/Rsc, rather than a server action under app/Rsc/Actions}
@@ -46,6 +52,7 @@ class MakeActionCommand extends Command
         $name = str_replace('\\', '/', trim((string) $this->argument('name'), '/'));
         $segments = array_map(fn (string $s) => Str::studly($s), explode('/', $name));
         $class = array_pop($segments);
+        $this->module = implode('/', array_map(fn (string $s) => Str::kebab($s), [...$segments, preg_replace('/Callable$/', '', $class)]));
         $rpc = (bool) $this->option('rpc');
         $form = (bool) $this->option('form');
 
@@ -180,7 +187,7 @@ class MakeActionCommand extends Command
 
         $doc = $rpc
             ? " * Reached from a server component as rpc('{$class}".($invokable ? "'" : ".method'").").\n *\n * Public methods are what the renderer can call; constructor injection works;\n * auth()->user() is the visitor the page is being rendered for."
-            : " * A server action. The build writes a \"use server\" export per public method,\n * named ".($invokable ? lcfirst($class) : lcfirst($class).'Method').", that a client component imports and calls.\n *\n * Throw a ValidationException, AuthenticationException or AuthorizationException\n * and the refusal reaches the form as itself; Rsc::revalidate() names what a\n * successful call made stale, and the answer carries it re-rendered.";
+            : " * A server action. The build writes server-actions/{$this->module}.ts, a \"use server\"\n * module exporting ".($invokable ? 'this class as its default' : 'each public method under its own name').", that a client component\n * imports and calls.\n *\n * Throw a ValidationException, AuthenticationException or AuthorizationException\n * and the refusal reaches the form as itself; Rsc::revalidate() names what a\n * successful call made stale, and the answer carries it re-rendered.";
 
         return "<?php\n\n"
             ."namespace {$namespace};\n\n"
@@ -303,10 +310,20 @@ class MakeActionCommand extends Command
     private function writeForm(string $class): void
     {
         $method = ((array) $this->option('method'))[0] ?? null;
-        $action = $method === null ? lcfirst($class) : lcfirst($class).ucfirst(Str::camel((string) $method));
         $name = Str::kebab($class);
         $export = Str::camel($class);
         $path = resource_path("js/forms/{$name}.ts");
+
+        // The action under its own name - send - unless that is the form's,
+        // or a word JavaScript keeps: then send + Action. An __invoke is the
+        // module's default, named after the class.
+        $own = $method === null ? Str::camel($class) : Str::camel((string) $method);
+        $action = $own === $export || in_array($own, self::JS_RESERVED, true) ? $own.'Action' : $own;
+        $import = match (true) {
+            $method === null => $action,
+            $action === $own => "{ {$action} }",
+            default => "{ {$own} as {$action} }",
+        };
 
         if ($this->files->exists($path) && ! $this->option('force')) {
             $this->components->warn("{$path} already exists; it was left as it is.");
@@ -318,7 +335,7 @@ class MakeActionCommand extends Command
         $this->files->put($path, <<<TS
         import { defineBlueprint } from '@rsc-kit/press/forms'
         import { shadcn } from '@rsc-kit/press/shadcn'
-        import { {$action} } from '../server-actions.generated'
+        import {$import} from '../server-actions/{$this->module}'
 
         // The fields are the request's rules(), and every check is Laravel's.
         // Place it in any page: <{$export}.Form />, or hand it to a resource as its form.
@@ -336,10 +353,11 @@ class MakeActionCommand extends Command
     private function stubExamples(string $class): string
     {
         $methods = array_map(fn ($m) => Str::camel((string) $m), (array) $this->option('method'));
-        $names = $methods === []
-            ? [lcfirst($class)]
-            : array_map(fn (string $m) => lcfirst($class).ucfirst($m), $methods);
+        $binding = Str::camel(preg_replace('/Callable$/', '', $class));
+        $from = "'./server-actions/{$this->module}'";
 
-        return 'Import { '.implode(', ', $names).' } from the generated server-actions module in a client component.';
+        return $methods === []
+            ? "In a client component: import {$binding} from {$from}, then {$binding}()."
+            : "In a client component: import * as {$binding} from {$from}, then {$binding}.{$methods[0]}().";
     }
 }

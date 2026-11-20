@@ -84,8 +84,8 @@ it('is what the manifest discovers, and writes the manifest itself', function ()
     // Under a running dev server the map is what the stub is generated from,
     // and the server starts again when the file changes - so the command
     // writes it rather than leaving it to the dev script's next run.
-    expect(ActionManifest::discover())->toBe(['shipmentsTrack' => 'Shipments.track'])
-        ->and(json_decode(File::get(base_path('rsc-host.json')), true)['actions'])->toBe(['shipmentsTrack' => 'Shipments.track'])
+    expect(ActionManifest::discover())->toBe(['shipments' => ['track' => 'Shipments.track']])
+        ->and(json_decode(File::get(base_path('rsc-host.json')), true)['actions'])->toBe(['shipments' => ['track' => 'Shipments.track']])
         ->and(json_decode(File::get(base_path('rsc-host.json')), true)['functions'])->toContain('Shipments.track');
 
     File::delete(base_path('rsc-host.json'));
@@ -98,7 +98,7 @@ it('a nested class is discovered too', function () {
 
     // A glob of the top level alone never saw Billing/Statements.php: the
     // command said created, and the stub was not there to import.
-    expect(ActionManifest::discover())->toBe(['statementsSend' => 'Statements.send']);
+    expect(ActionManifest::discover())->toBe(['billing/statements' => ['send' => 'Statements.send']]);
 
     File::delete(base_path('rsc-host.json'));
 });
@@ -114,7 +114,7 @@ it('an rpc class is in the manifest as a function, never as an action', function
 
     expect($manifest['functions'])->toContain('Almanacs.recent')
         ->and($manifest['functions'])->not->toContain('__rsc.middleware')
-        ->and($manifest['actions'])->not->toHaveKey('almanacsRecent');
+        ->and($manifest['actions'])->not->toHaveKey('almanacs');
 
     File::delete(base_path('rsc-host.json'));
 });
@@ -136,12 +136,12 @@ it('writes a public form whole with --form: the request, the action taking it, a
         ->toContain('return true;');
 
     expect(File::get(resource_path('js/forms/contact.ts')))
-        ->toContain("import { contactSend } from '../server-actions.generated'")
+        ->toContain("import { send } from '../server-actions/contact'")
         ->toContain("name: 'contact',")
         ->toContain("import { defineBlueprint } from '@rsc-kit/press/forms'")
-        ->toContain('actions: { create: contactSend },');
+        ->toContain('actions: { create: send },');
 
-    expect(ActionManifest::discover())->toHaveKey('contactSend', 'Contact.send');
+    expect(ActionManifest::discover())->toHaveKey('contact', ['send' => 'Contact.send']);
 
     File::delete(app_path('Http/Requests/SendContact.php'));
     File::deleteDirectory(resource_path('js/forms'));

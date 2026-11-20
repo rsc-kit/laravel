@@ -158,8 +158,11 @@ class Orders
 }
 ```
 
-A client component imports `ordersCancel` from the generated
-`server-actions.generated.ts`. `Rsc::revalidate('orders')` sends the
+The build writes a `"use server"` module per class, so a client component
+imports `* as orders` from `server-actions/orders` and calls
+`orders.cancel(id)`. A class in a folder is a module in the same folder,
+`Billing/Invoices` is `server-actions/billing/invoices`, and an invokable
+class is its module's default export. `Rsc::revalidate('orders')` sends the
 re-rendered section back with the action's answer.
 
 ## Refusing
@@ -203,13 +206,13 @@ class Contact
 }
 ```
 
-and hand the action the build generates from it, `contactSend`, to
-`@rsc-kit/press`:
+and hand the action the build generates from it, `send` in
+`server-actions/contact`, to `@rsc-kit/press`:
 
 ```ts
-import { contactSend } from '../server-actions.generated'
+import { send } from '../server-actions/contact'
 
-export const contact = defineForm({ name: 'contact', action: contactSend, theme: shadcn })
+export const contact = defineBlueprint({ name: 'contact', actions: { create: send }, theme: shadcn })
 ```
 
 `php artisan make:rsc-action Contact --method=send --form` writes all three: the
