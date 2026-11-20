@@ -7,10 +7,11 @@
  */
 
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\File;
 use RscKit\CallableRegistry;
 use RscKit\Support\ActionManifest;
 
-test('discovery maps class methods to camelCase JS names', function () {
+test('discovery maps a class to a module, and its methods to the module\'s exports', function () {
     $dir = sys_get_temp_dir().'/rsc-actions-'.uniqid();
     mkdir($dir, 0755, true);
 
@@ -31,8 +32,7 @@ CLASS);
     $actions = ActionManifest::discover();
 
     expect($actions)->toBe([
-        'todoActionsAdd' => 'TodoActions.add',
-        'todoActionsToggle' => 'TodoActions.toggle',
+        'todo-actions' => ['add' => 'TodoActions.add', 'toggle' => 'TodoActions.toggle'],
     ]);
 
     unlink($dir.'/TodoActions.php');
@@ -60,7 +60,7 @@ CLASS);
     require $dir.'/Magic.php';
     Config::set('rsc.actions_dir', $dir);
 
-    expect(ActionManifest::discover())->toBe(['magicSave' => 'Magic.save']);
+    expect(ActionManifest::discover())->toBe(['magic' => ['save' => 'Magic.save']]);
 
     unlink($dir.'/Magic.php');
     rmdir($dir);
@@ -92,7 +92,7 @@ CLASS);
     require $dir.'/Refunds.php';
     Config::set('rsc.actions_dir', $dir);
 
-    expect(ActionManifest::discover())->toBe(['refundsIssue' => 'Refunds.issue']);
+    expect(ActionManifest::discover())->toBe(['refunds' => ['issue' => 'Refunds.issue']]);
     expect(CallableRegistry::discover($dir))->toBe(['Refunds.issue' => ['RscTestDocblock\Refunds', 'issue']]);
 
     unlink($dir.'/Refunds.php');
@@ -123,4 +123,95 @@ test('the written manifest is an object even with nothing in it', function () {
     $this->artisan('rsc:host-manifest', ['--print' => true])
         ->expectsOutputToContain('"actions": {}')
         ->assertSuccessful();
+});
+
+test('a nested class is a module in the same folder, and an __invoke is its default export', function () {
+    $dir = sys_get_temp_dir().'/rsc-actions-'.uniqid();
+    mkdir($dir.'/Billing', 0755, true);
+
+    file_put_contents($dir.'/Billing/SendInvoice.php', <<<'CLASS'
+<?php
+namespace RscTestModules\Billing;
+class SendInvoice
+{
+    public function __invoke(int $id): void {}
+}
+CLASS);
+    file_put_contents($dir.'/Orders.php', <<<'CLASS'
+<?php
+namespace RscTestModules;
+class Orders
+{
+    public function delete(int $id): void {}
+}
+CLASS);
+
+    require $dir.'/Billing/SendInvoice.php';
+    require $dir.'/Orders.php';
+    Config::set('rsc.actions_dir', $dir);
+
+    // delete is a word JavaScript keeps; the engine exports it under its own
+    // name all the same, so the map says delete.
+    expect(ActionManifest::discover())->toBe([
+        'billing/send-invoice' => ['default' => 'SendInvoice'],
+        'orders' => ['delete' => 'Orders.delete'],
+    ]);
+
+    File::deleteDirectory($dir);
+});
+
+test('two classes the endpoint would answer with one name are refused, not the second silently lost', function () {
+    // The registry answers Invoices.create with the first class it finds, so
+    // the second module's stub would post to the first one's method.
+    $dir = sys_get_temp_dir().'/rsc-actions-'.uniqid();
+    mkdir($dir.'/Billing', 0755, true);
+
+    file_put_contents($dir.'/Billing/Invoices.php', <<<'CLASS'
+<?php
+namespace RscTestTwice\Billing;
+class Invoices
+{
+    public function create(): void {}
+}
+CLASS);
+    file_put_contents($dir.'/Invoices.php', <<<'CLASS'
+<?php
+namespace RscTestTwice;
+class Invoices
+{
+    public function create(): void {}
+}
+CLASS);
+
+    require $dir.'/Billing/Invoices.php';
+    require $dir.'/Invoices.php';
+    Config::set('rsc.actions_dir', $dir);
+
+    expect(fn () => ActionManifest::discover())
+        ->toThrow(RuntimeException::class, 'RscTestTwice\Billing\Invoices and RscTestTwice\Invoices are both Invoices.create');
+
+    File::deleteDirectory($dir);
+});
+
+test('the manifest writes each module as an object', function () {
+    $dir = sys_get_temp_dir().'/rsc-actions-'.uniqid();
+    mkdir($dir, 0755, true);
+
+    file_put_contents($dir.'/Pings.php', <<<'CLASS'
+<?php
+namespace RscTestJson;
+class Pings
+{
+    public function send(): void {}
+}
+CLASS);
+
+    require $dir.'/Pings.php';
+    Config::set('rsc.actions_dir', $dir);
+
+    $this->artisan('rsc:host-manifest', ['--print' => true])
+        ->expectsOutputToContain('"pings": {')
+        ->assertSuccessful();
+
+    File::deleteDirectory($dir);
 });
