@@ -49,7 +49,7 @@ Follow these on every change; each is explained below.
   every page it answers. A page that exports `openGraph.images` replaces the
   site's image rather than adding a second `og:image` behind it; the nearer of
   the file and the export wins, and in the same folder the file does.
-- **Never edit generated files:** `resources/js/server-actions.generated.ts`,
+- **Never edit generated files:** `resources/js/server-actions/`,
   `rsc-host.json`, `.rsc-kit/`. Change the PHP they are generated from.
 - **Secrets are generated, never invented or committed:** `php artisan
   rsc:install` writes `RSC_HOST_CALL_SECRET` and `RSC_SIGNING_SECRET`.
@@ -113,7 +113,7 @@ resources/js/app/            the route tree
 ├── error.tsx                must be "use client"
 ├── not-found.tsx            the app's 404 page
 └── loading.tsx              rarely; see below
-resources/js/server-actions.generated.ts   written by the build; never edit
+resources/js/server-actions/  one module per action class, written by the build; never edit
 app/Rsc/                     classes rpc() calls, Class.method
 app/Rsc/Actions/             server actions
 rsc-host.json                written by PHP: actions and function names
@@ -309,7 +309,7 @@ by the app's generic message on purpose, so a query's SQL never reaches a form.
 A read in a page answers the status itself, as above; `fetchQuery` rejects with
 the message, `.status` and the refusal's `.refusal`.
 
-**Through a generated stub**, `<Form action={ordersDelete}>` shows the message
+**Through a generated stub**, `<Form action={orders.delete}>` shows the message
 as `formError`. Awaited directly, the stub **rejects** with an
 `ActionRefusedError` (`@rsc-kit/core/errors`: `.message`, `.status`), so a
 success toast or a navigation to an id that never came back does not run for a
@@ -452,8 +452,19 @@ class Orders
 
 ```tsx
 'use client'
-import { ordersCancel } from '../../server-actions.generated'
+import * as orders from '../../server-actions/orders'
+
+<button onClick={() => orders.cancel(id)}>Cancel</button>
 ```
+
+- The build writes one `"use server"` module per class (rsc-kit/laravel 0.26,
+  @rsc-kit/core 0.41): `Orders::cancel` is `cancel` in
+  `server-actions/orders`, `import { cancel }` works too, and a class in a
+  folder is a module in the same folder - `Billing/Invoices` is
+  `server-actions/billing/invoices`. An invokable class is the default export:
+  `import sendInvite from './server-actions/send-invite'`. A method named
+  `delete` is still `orders.delete`. There is no `server-actions.generated.ts`
+  and no flat `ordersCancel` any more.
 
 - `make:rsc-action` writes the guards the registry reads; do not hand-write
   them from memory. It also rewrites `rsc-host.json`, and a running dev
@@ -613,11 +624,11 @@ Rsc::changed("team:{$team->id}:repos");
 ```tsx
 'use client'
 import { Form } from '@rsc-kit/core/form'
-import { ordersCreate } from '../../server-actions.generated'
+import * as orders from '../../server-actions/orders'
 
 export function NewOrder() {
   return (
-    <Form action={ordersCreate}>
+    <Form action={orders.create}>
       {({ pending, error, formError }) => (
         <>
           <input name="title" />
@@ -753,12 +764,12 @@ public function update(UpdateProduct $request): Product
   at startup:
 
 ```ts
-import { productsStore, productsUpdate } from '@/actions/products'
+import { store, update } from '../../server-actions/products'
 
 export const products = defineResource<Product>()({
   name: 'products', key: 'id', title: 'name',
   source: { list, find, delete: remove },
-  actions: { create: productsStore, update: productsUpdate },
+  actions: { create: store, update },
   fields: { category_id: { relation: 'categories' } },
   table: (col) => [col.text('name'), col.money('price')],
 })
@@ -874,17 +885,17 @@ blueprint: `defineBlueprint` from `@rsc-kit/press/forms` (0.30.52; it was
 static - no `connection()`, no Suspense for it. `php artisan make:rsc-action
 Contact --method=send --form` writes it whole: `App\Http\Requests\SendContact`,
 `app/Rsc/Actions/Contact.php` with `send(SendContact $request)`, and this file
-(`bunx rsc-kit make:form contactSend` writes the file alone):
+(`bunx rsc-kit make:form Contact.send` writes the file alone):
 
 ```ts
 // resources/js/forms/contact.ts
 import { defineBlueprint } from '@rsc-kit/press/forms'
 import { shadcn } from '@rsc-kit/press/shadcn'
-import { contactSend } from '../server-actions.generated'
+import { send } from '../server-actions/contact'
 
 export const contact = defineBlueprint({
   name: 'contact',
-  actions: { create: contactSend },
+  actions: { create: send },
   fields: { message: { type: 'textarea' } },
   theme: shadcn,
   done: 'Thanks - we will be in touch.',  // or redirect: '/thanks', never both
@@ -902,7 +913,7 @@ export const contact = defineBlueprint({
   `size`, `between` and `in` or `Rule::in()`; anything else, such as `regex`
   or `Rule::enum()`, stays the server's check alone.
 - A file field needs `form` and `handle`, as does a check in TypeScript first:
-  keep a schema, and `handle: (values) => contactSend(values)`.
+  keep a schema, and `handle: (values) => send(values)`.
 - With `update`, `<profile.Form id={user.id} values={user} />` edits that
   record: `update(UpdateProfile $request, string $user)` gets the key after the
   request. The key comes back from the browser, so `authorize()` must check
@@ -1218,7 +1229,8 @@ npm ci && npm run build
 
 - Import `rpc`, or call it from a client component.
 - Write `route.php`, a socket, `rsc:serve`, or anything that renders in PHP.
-- Edit `server-actions.generated.ts` or `rsc-host.json` by hand.
+- Edit `server-actions/` or `rsc-host.json` by hand, or import from
+  `server-actions.generated` (gone in 0.41).
 - Write a `src/commands` file to migrate the database or drain Laravel's
   queue; those are `php artisan`.
 - Add `loading.tsx` to fix a refused route; move the read into a slot.
