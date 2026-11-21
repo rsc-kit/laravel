@@ -117,6 +117,7 @@ dataset('what an agent must be told', [
     'a failed action in development opens the error overlay with Laravel\'s exception' => ['error overlay', 'APP_DEBUG=true'],
     'a public/ file hides the app\'s favicon.ico or robots, and Laravel ships an empty one' => ['public/favicon.ico'],
     '<Form> checks a changed field with a FormRequest\'s rules when it is left, never running the method, and validate() asks at any other moment' => ['validate(', '`FormRequest`', 'isPrecognitive()'],
+    'a public form stops bots with <Honeypot /> from @rsc-kit/core/honeypot, dropped before the action class is called, with throttle beside it' => ['<Honeypot />', '@rsc-kit/core/honeypot', 'throttle:5,1'],
 ]);
 
 it('says it', function (string $needle) use ($skill) {

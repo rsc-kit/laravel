@@ -681,6 +681,14 @@ export function NewOrder() {
   `onClick={async () => (await validate('email')) && setStep(2)}`. Keep every
   step's fields in the form (hidden, not unmounted) so the last submit sends
   them. There is no `usePrecognition` and no `laravel-precognition` package.
+- Spam on a public form (contact, sign-up, newsletter) is `<Honeypot />` from
+  `@rsc-kit/core/honeypot` inside the form (0.42+). A post with its hidden
+  field filled is answered as a success and dropped in the renderer, so the
+  action class is never called; otherwise the field is stripped, and the
+  method's `FormRequest` never sees it. The field is `homepage`;
+  `<Honeypot name="website" />` renames it. Do not add a hidden input and check
+  it in PHP. Put `#[Middleware('throttle:5,1')]` on the action class as well -
+  a honeypot only stops the crudest bots.
 - From a button rather than a form, use `useAction` from
   `@rsc-kit/core/useAction`: `execute`, `isPending`, `onSuccess`, `onError`
   and an `optimistic` option.
