@@ -1232,6 +1232,13 @@ npm ci && npm run build
   only then are that file's environment checks and `register()` run for it.
   Never `node .output/server/index.mjs <name>`: that is the server, and it
   starts.
+- Moving domain (`www` to the bare domain, an old domain to a new one) with
+  `offline: true`: redirect everything on the old origin but keep serving `/sw.js`
+  there, unredirected, for a few weeks. A browser never updates a worker whose
+  script redirects, so a returning visitor's worker would serve the old
+  origin's stored pages and the offline page instead of the redirect. From
+  0.42.1 the worker also unregisters itself when a request fails because its
+  url now redirects.
 
 ## Do Not
 
