@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use RscKit\CallableRegistry;
 use RscKit\RouteMiddleware;
 use RscKit\Support\ActionManifest;
+use RscKit\Support\HostSources;
 use RscKit\Support\HostTypes;
 use RscKit\Versions;
 
@@ -67,6 +68,9 @@ class RscHostManifestCommand extends Command
                 // What can be checked without running: a form request's
                 // rules, filtered to the fields a form names, before submit.
                 'validates' => CallableRegistry::validating($callables),
+                // Where each is written, for the editor: the build maps
+                // rpc('Orders.recent') to its line.
+                'sources' => (object) HostSources::describe($callables),
             ],
             JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
         );

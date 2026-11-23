@@ -123,7 +123,7 @@ class HostTypes
     }
 
     /** @param  array{class-string, string}|class-string|Closure  $callable */
-    private static function reflect(array|string|Closure $callable): ReflectionFunctionAbstract
+    public static function reflect(array|string|Closure $callable): ReflectionFunctionAbstract
     {
         return match (true) {
             $callable instanceof Closure => new ReflectionFunction($callable),

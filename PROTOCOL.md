@@ -287,6 +287,12 @@ runs it as dev and every build start), and `make:rsc-action` writes it too.
   `date-time` string; PHP's own classes, `DateTime` included, are left open.
 - **`defs`** holds the data classes those schemas refer to by
   `"$ref": "#/defs/Name"`, one TypeScript interface each.
+- **`sources`** says where each function is written: `file`, relative to the
+  project root, a 1-based `line`, and `name`, what PHP calls it. The build maps
+  `rpc()`'s declaration to it, so an editor goes from a call to the method.
+  Read by reflection (`Support\HostSources`), so an inherited method or a
+  trait's is the file it is in; one outside the application is left out. A
+  change here alone restarts nothing and makes nothing stale.
 
 ## Conformance
 
