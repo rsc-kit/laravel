@@ -258,7 +258,7 @@ runs it as dev and every build start), and `make:rsc-action` writes it too.
 
 ```json
 {
-  "actions": { "ordersCancel": "Orders.cancel" },
+  "actions": { "orders": { "cancel": "Orders.cancel" } },
   "functions": ["Orders.cancel", "Posts.latest"],
   "types": {
     "Orders.cancel": { "params": [{ "type": "integer" }] },
@@ -268,11 +268,15 @@ runs it as dev and every build start), and `make:rsc-action` writes it too.
 }
 ```
 
-- **`actions`** maps the JavaScript name the build exports from
-  `server-actions.generated.ts` to the name a call arrives under. Discovered by
+- **`actions`** maps each module the build writes under `server-actions/` to
+  its exports, and each export to the name a call arrives under. Discovered by
   reflection over `app/Rsc/Actions` (`rsc.actions_dir`), inherited methods
-  included: `App\Rsc\Actions\Orders::cancel` is `ordersCancel`, called as
-  `Orders.cancel` (the class's short name). Always an object, even when empty.
+  included: `App\Rsc\Actions\Orders::cancel` is the `cancel` export of
+  `server-actions/orders`, called as `Orders.cancel` (the class's short name).
+  A class in a folder is a module in one, in kebab case
+  (`Billing\SendInvoice` is `billing/send-invoice`), and an `__invoke` is the
+  module's `default` export, called by the class's name alone. Always an
+  object, even when empty.
 - **`functions`** is every name `rpc()` may call, sorted; the build turns it
   into the type of `rpc()`'s first argument.
 - **`types`** gives each function's positional `params`, how many trailing
