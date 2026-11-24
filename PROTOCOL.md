@@ -32,8 +32,8 @@ Authorization: <likewise, if the page request had one>
 - **`Cookie` and `Authorization`** are the only headers the renderer
   forwards. The route carries `EncryptCookies`, `AddQueuedCookiesToResponse`
   and `StartSession`, so `auth()->user()` inside a call is the visitor the
-  page is being rendered for. During a build there is no visitor and the
-  headers are absent.
+  page is being rendered for. A build doesn't post here at all: see
+  [During a build](#during-a-build).
 - **No CSRF.** `VerifyCsrfToken` is deliberately not on the route: CSRF
   protects a browser tricked into posting with its cookies, and the caller
   here holds a secret a browser cannot be tricked into sending.
@@ -294,6 +294,39 @@ runs it as dev and every build start), and `make:rsc-action` writes it too.
   trait's is the file it is in; one outside the application is left out. A
   change here alone restarts nothing and makes nothing stale.
 
+- **`calls`** is the argument that makes this command answer a build's calls
+  instead: `["--calls"]`.
+
+## During a build
+
+`php artisan rsc:host-manifest --calls` answers `rpc()` while the build renders
+pages (`Build\BuildCalls`): one call a line on stdin, one answer a line on
+stdout, until stdin ends.
+
+```text
+> {"id":1,"function":"Posts.all","args":[]}
+< {"id":1,"status":200,"result":[]}
+> {"id":2,"function":"Posts.mine","args":[]}
+< {"id":2,"visitor":["who is signed in"],"last":true}
+```
+
+- An answer is the endpoint's reply, with its `id` and `status`. It is stored
+  with the page, for everyone.
+- **`visitor`** is what the function read of whoever is asking; the page streams
+  it per request instead. `Build\Visitor` records, and nothing throws, so a
+  `catch` in the app can't hide it. Watched: the request's headers, cookies,
+  address and user agent, the session, the guards, and a cookie set. The host,
+  scheme, path and the call's own arguments are not the visitor's.
+- A function under `#[Authenticated]`, `#[Can]` or `#[Middleware]`, or whose
+  first parameter is a form request, is answered `visitor` without running.
+- **`"last": true`** follows a call that read the visitor: what it left behind -
+  a resolved guard, a started session - is not for the next call, so the build
+  starts another process for what is left.
+- Every answer starts with a newline, so output the app printed cannot join it.
+
+A singleton built at boot that kept the console's request, and a raw `$_COOKIE`,
+are not seen.
+
 ## Conformance
 
 CI runs rsc-kit's conformance suite against this endpoint on every change
@@ -306,7 +339,8 @@ locally:
 vendor/bin/testbench rsc:host-manifest --print > /tmp/rsc-host.json
 PHP_CLI_SERVER_WORKERS=4 vendor/bin/testbench serve --port=8125 --no-reload &
 npx -y -p @rsc-kit/core rsc-kit-conformance \
-  --endpoint http://127.0.0.1:8125/__rsc/host-call --secret test --manifest /tmp/rsc-host.json
+  --endpoint http://127.0.0.1:8125/__rsc/host-call --secret test --manifest /tmp/rsc-host.json \
+  --calls "vendor/bin/testbench rsc:host-manifest --calls"
 ```
 
 The Pest suite covers the same contract from this side: POST the request
