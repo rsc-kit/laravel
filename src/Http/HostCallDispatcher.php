@@ -30,6 +30,9 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
  */
 class HostCallDispatcher
 {
+    /** Answering the build rather than a renderer - see forBuild(). */
+    private bool $building = false;
+
     /** The header the shared secret arrives on. */
     public const SECRET_HEADER = 'X-Rsc-Host-Secret';
 
@@ -48,6 +51,22 @@ class HostCallDispatcher
         private string $secret,
         private string $previousSecret = '',
     ) {}
+
+    /**
+     * The same, answering a build.
+     *
+     * A failure there is the build's to print: it says what went wrong and
+     * where whatever app.debug is - it goes to whoever is building, not to a
+     * visitor - and is not reported, since the call may be one a visitor was
+     * needed for, whose null user is no error.
+     */
+    public function forBuild(): self
+    {
+        $build = clone $this;
+        $build->building = true;
+
+        return $build;
+    }
 
     /**
      * Whether the caller presented the right secret.
@@ -178,7 +197,7 @@ class HostCallDispatcher
             // collapsing them all to 500 makes a rate-limited visitor
             // indistinguishable from a broken server. A 5xx is still a
             // failure, though, and reported like one.
-            if ($e->getStatusCode() >= 500) {
+            if ($e->getStatusCode() >= 500 && ! $this->building) {
                 report($e);
             }
 
@@ -392,9 +411,11 @@ class HostCallDispatcher
      */
     private function failure(\Throwable $e): array
     {
-        report($e);
+        if (! $this->building) {
+            report($e);
+        }
 
-        if (! config('app.debug')) {
+        if (! config('app.debug') && ! $this->building) {
             return $this->fail(500, 'Server Error');
         }
 

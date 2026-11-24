@@ -229,6 +229,38 @@ class CallableRegistry
     }
 
     /**
+     * What a callable asks of a visitor before it runs, or null when nothing:
+     * a guard on its class or method, or a form request, which is what a
+     * visitor typed. For the build, which has nobody to ask.
+     */
+    public function asksFor(string $name): ?string
+    {
+        $callable = $this->callables[$name] ?? null;
+
+        if ($callable === null) {
+            return null;
+        }
+
+        if (self::validatesEarly($callable)) {
+            return 'a form';
+        }
+
+        if ($callable instanceof Closure) {
+            return null;
+        }
+
+        [$class, $method] = is_array($callable) ? $callable : [$callable, '__invoke'];
+        $attrs = $this->resolveAttributes($class, $method);
+
+        return match (true) {
+            $attrs['authenticated'] !== [] => '#[Authenticated]',
+            $attrs['can'] !== [] => '#[Can]',
+            $attrs['middleware'] !== [] => '#[Middleware]',
+            default => null,
+        };
+    }
+
+    /**
      * Run authorization checks declared via attributes on the class and method.
      *
      * @throws AuthenticationException

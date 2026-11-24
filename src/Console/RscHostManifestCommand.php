@@ -3,12 +3,15 @@
 namespace RscKit\Console;
 
 use Illuminate\Console\Command;
+use RscKit\Build\BuildCalls;
 use RscKit\CallableRegistry;
 use RscKit\RouteMiddleware;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\HostSources;
 use RscKit\Support\HostTypes;
 use RscKit\Versions;
+use Symfony\Component\Console\Input\StreamableInputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Hands the build what this backend offers the app, as rsc-host.json:
@@ -32,12 +35,18 @@ use RscKit\Versions;
  */
 class RscHostManifestCommand extends Command
 {
-    protected $signature = 'rsc:host-manifest {--print : Write to stdout instead of the file}';
+    protected $signature = 'rsc:host-manifest
+        {--print : Write to stdout instead of the file}
+        {--calls : Answer the build\'s rpc() calls, one JSON line each, from stdin}';
 
     protected $description = 'Write rsc-host.json, the actions and functions the RSC build reads';
 
     public function handle(CallableRegistry $registry): int
     {
+        if ($this->option('calls')) {
+            return $this->answerCalls($this->laravel->make(BuildCalls::class));
+        }
+
         $actions = ActionManifest::discover();
 
         // Walked again rather than read from the registry alone: make:rsc-action
@@ -71,6 +80,10 @@ class RscHostManifestCommand extends Command
                 // Where each is written, for the editor: the build maps
                 // rpc('Orders.recent') to its line.
                 'sources' => (object) HostSources::describe($callables),
+                // What to add to this command for it to answer rpc() during
+                // a build, so a page whose data is the same for everyone is
+                // stored with it.
+                'calls' => ['--calls'],
             ],
             JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
         );
@@ -84,6 +97,46 @@ class RscHostManifestCommand extends Command
         file_put_contents(base_path('rsc-host.json'), $json."\n");
 
         $this->info(sprintf('Wrote %d action(s) and %d function(s) to rsc-host.json', array_sum(array_map('count', $actions)), count($functions)));
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Answer calls until the build closes stdin, or until one read the
+     * visitor: what the app kept from that one is not the next one's to find.
+     */
+    private function answerCalls(BuildCalls $calls): int
+    {
+        $in = $this->input instanceof StreamableInputInterface && $this->input->getStream() !== null
+            ? $this->input->getStream()
+            : STDIN;
+
+        while (($line = fgets($in)) !== false) {
+            if (trim($line) === '') {
+                continue;
+            }
+
+            // Whatever the app prints while it answers is not an answer.
+            ob_start();
+
+            try {
+                ['json' => $json, 'last' => $last] = $calls->answer($line);
+            } finally {
+                $printed = (string) ob_get_clean();
+            }
+
+            if ($printed !== '') {
+                file_put_contents('php://stderr', $printed);
+            }
+
+            // On a line of its own whatever was written before it: dump()
+            // goes round the buffer and need not end with one.
+            $this->output->write("\n".$json."\n", false, OutputInterface::OUTPUT_RAW);
+
+            if ($last) {
+                break;
+            }
+        }
 
         return self::SUCCESS;
     }
