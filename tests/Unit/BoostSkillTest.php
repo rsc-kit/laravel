@@ -118,6 +118,11 @@ dataset('what an agent must be told', [
     'a public/ file hides the app\'s favicon.ico or robots, and Laravel ships an empty one' => ['public/favicon.ico'],
     '<Form> checks a changed field with a FormRequest\'s rules when it is left, never running the method, and validate() asks at any other moment' => ['validate(', '`FormRequest`', 'isPrecognitive()'],
     'a public form stops bots with <Honeypot /> from @rsc-kit/core/honeypot, dropped before the action class is called, with throttle beside it' => ['<Honeypot />', '@rsc-kit/core/honeypot', 'throttle:5,1'],
+    'the word rpc goes to the PHP method in an editor' => ['go to the definition of `rpc`'],
+    'a build asks Laravel what rpc() returns and stores what is the same for everyone, with nothing to mark' => ['answered at build time', 'there is no attribute for it'],
+    'a stored rpc() answer lasts until the next build; connection() keeps a call per request and calls: false stops the build asking' => ['calls: false', 'lasts until the next build', '`await connection()` before a call'],
+    'a function a page reads must not write, since the build runs it' => ['A function a page reads must never'],
+    'contentSecurityPolicy.extend adds to the default policy, and directives replaces it' => ['contentSecurityPolicy: { extend:'],
     'a site moving domain keeps serving /sw.js on the old origin, unredirected, so a returning visitor\'s worker can update' => ['keep serving `/sw.js`'],
 ]);
 

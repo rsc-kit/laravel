@@ -205,6 +205,8 @@ const orders = await rpc<Order[]>('Orders.recent', 5)
   `rpc<Order[]>('Orders.recent')` for those.
 - Sibling `rpc()` calls in one render go to Laravel as one batch, answered as
   each finishes.
+- To find the PHP behind a call, go to the definition of `rpc` (Cmd+click the
+  word `rpc`, 0.43+): it opens the method.
 - A client component cannot call `rpc()`. It calls a server action.
 
 ## Pages Paint; Slots Wait
@@ -244,9 +246,36 @@ or redirect decided under it may already have a 200 on the wire, and it sits
 below its layout, so it does not cover a layout that waits. Keep it for a page
 that is one read and nothing else.
 
-The build renders every route. A page that awaits `rpc()` above every
-boundary has nothing to store, and the build fails naming the route. Fix it by
-moving the read into a slot.
+### What the build stores
+
+The build renders every route, and asks Laravel what `rpc()` returns
+(`@rsc-kit/core` 0.43, `rsc-kit/laravel` 0.27, with `hostManifest` in
+`rscKit()`). A call whose answer is the same for everyone is answered at build time
+and stored with the page. Do not mark anything: there is no attribute for it.
+
+- A function that reads the visitor (`auth()`, a gate, the session, a cookie,
+  a header, the address) or declares `#[Authenticated]`, `#[Can]`,
+  `#[Middleware]` or a `FormRequest` is left to the request, and its slot
+  streams. The build report names the call and what it read.
+- `await connection()` before a call keeps it per request. Use it for data
+  that must be fresh on every load.
+- A stored answer lasts until the next build. No tag, `Rsc::changed()` or
+  `cache()` refreshes a page stored whole; `export const revalidate` does it on
+  a timer, and such a page is not stored at build.
+- The build runs those functions, so it needs the database, and an exception
+  in one fails the build with its message. **A function a page reads must never
+  write**: the build would run the write.
+- A raw `$_COOKIE`, or per-visitor state a package keeps outside Laravel, is
+  not noticed, and the answer a guest gets is stored. Put `await connection()`
+  before that call.
+- No database in CI: `hostManifest: { command: [...], calls: false }`. The build
+  then asks nothing, every `rpc()` streams, and a page awaiting one above every
+  boundary fails the build.
+
+A page that awaits a visitor's read above every boundary has nothing to store,
+and the build fails naming the route and the call. Fix it by moving the read
+into a slot. Slots stay the default even where a read is stored: if the function
+starts reading the visitor, the slot streams instead of failing the build.
 
 ## Params
 
@@ -1163,8 +1192,13 @@ A strict policy goes in the renderer's config, never in Laravel:
 
 ```ts title="vite.config.ts"
 rscKit({ contentSecurityPolicy: {} })   // default-src 'self', no 'unsafe-inline'
+rscKit({ contentSecurityPolicy: { extend: { 'frame-src': 'https://challenges.cloudflare.com' } } })   // 0.43+
 rscKit({ contentSecurityPolicy: { directives: { 'img-src': ["'self'", 'data:'] }, reportOnly: true } })
 ```
+
+`extend` adds sources to the default policy and keeps `'self'`; `directives`
+replaces the default whole. Use `extend` to allow one more origin. Both together
+fail the build.
 
 The engine adds what each page's own inline code needs: hashes on a page the
 build stored, a kept page or a shell, and a nonce, new per response, where a
@@ -1214,7 +1248,9 @@ composer install --no-dev --optimize-autoloader
 npm ci && npm run build
 ```
 
-- The build runs `rsc:host-manifest`, so PHP must boot on the build machine.
+- The build runs `rsc:host-manifest`, so PHP must boot on the build machine,
+  and the functions pages read, so it needs the database and `APP_URL`
+  (`hostManifest.calls: false` turns the second off).
 - Run `.output/server/index.mjs` as a service with the app's `.env`. Put the
   renderer in front; it forwards what it does not own to Laravel.
 - Block `/__rsc/host-call` from the internet at the web server. The secret
