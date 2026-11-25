@@ -27,7 +27,7 @@ class LoginPage
     use Shared;
 
     /** What the page is given. */
-    #[\\RscKit\\Attributes\\Authenticated]
+    #[\\Illuminate\\Routing\\Attributes\\Controllers\\Middleware('auth')]
     public function props(): array
     {
         return [];

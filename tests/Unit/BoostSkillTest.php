@@ -123,6 +123,7 @@ dataset('what an agent must be told', [
     'a stored rpc() answer lasts until the next build; connection() keeps a call per request and calls: false stops the build asking' => ['calls: false', 'lasts until the next build', '`await connection()` before a call'],
     'a function a page reads must not write, since the build runs it' => ['A function a page reads must never'],
     'contentSecurityPolicy.extend adds to the default policy, and directives replaces it' => ['contentSecurityPolicy: { extend:'],
+    'the guards are Laravel\'s attributes, and #[Authorize] guarded nothing before 0.28' => ["#[Authorize('update', Order::class)]", '**Before rsc-kit/laravel 0.28 `#[Authorize]` guarded', 'are gone in 0.28'],
     'a method takes services beside its arguments, and the signed-in user from #[CurrentUser]; a model or a Request is never injected' => ['#[CurrentUser] User $user', 'class is injected'],
     'a site moving domain keeps serving /sw.js on the old origin, unredirected, so a returning visitor\'s worker can update' => ['keep serving `/sw.js`'],
 ]);

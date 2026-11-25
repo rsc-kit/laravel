@@ -2,14 +2,16 @@
 
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Foundation\Auth\User;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Attributes\Controllers\Authorize;
+use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Support\Facades\Gate;
-use RscKit\Attributes\Authenticated;
-use RscKit\Attributes\Can;
 use RscKit\CallableRegistry;
 use RscTestClosureMiddleware\ClosureMiddlewareActions;
 
-#[Authenticated]
+#[Middleware('auth')]
 class AuthenticatedActions
 {
     public function doSomething(): string
@@ -20,7 +22,7 @@ class AuthenticatedActions
 
 class MethodLevelAuthActions
 {
-    #[Authenticated]
+    #[Middleware('auth')]
     public function secured(): string
     {
         return 'secured';
@@ -32,7 +34,7 @@ class MethodLevelAuthActions
     }
 }
 
-#[Can('admin')]
+#[Authorize('admin')]
 class GatedActions
 {
     public function reset(): string
@@ -43,14 +45,14 @@ class GatedActions
 
 class MethodGatedActions
 {
-    #[Can('delete', 'App\Models\Todo')]
+    #[Authorize('delete', 'App\Models\Todo')]
     public function remove(): string
     {
         return 'removed';
     }
 }
 
-#[Authenticated]
+#[Middleware('auth')]
 abstract class GuardedBase
 {
     public function wipe(): string
@@ -74,19 +76,20 @@ function freshRegistry(): CallableRegistry
     return new CallableRegistry(app());
 }
 
-test('class-level Authenticated throws when unauthenticated', function () {
-    Auth::shouldReceive('guard')->with(null)->andReturnSelf();
-    Auth::shouldReceive('check')->andReturn(false);
+beforeEach(function () {
+    app(Kernel::class);
+    app()->instance('request', Request::create('/__rsc/host-call', 'POST'));
+});
 
+test('class-level auth throws when unauthenticated', function () {
     $registry = freshRegistry();
     $registry->register('AuthenticatedActions.doSomething', [AuthenticatedActions::class, 'doSomething']);
 
     $registry->execute('AuthenticatedActions.doSomething', []);
 })->throws(AuthenticationException::class);
 
-test('class-level Authenticated passes when authenticated', function () {
-    Auth::shouldReceive('guard')->with(null)->andReturnSelf();
-    Auth::shouldReceive('check')->andReturn(true);
+test('class-level auth passes when authenticated', function () {
+    auth()->setUser(new User);
 
     $registry = freshRegistry();
     $registry->register('AuthenticatedActions.doSomething', [AuthenticatedActions::class, 'doSomething']);
@@ -96,17 +99,14 @@ test('class-level Authenticated passes when authenticated', function () {
     expect($result)->toBe('done');
 });
 
-test('method-level Authenticated throws when unauthenticated', function () {
-    Auth::shouldReceive('guard')->with(null)->andReturnSelf();
-    Auth::shouldReceive('check')->andReturn(false);
-
+test('method-level auth throws when unauthenticated', function () {
     $registry = freshRegistry();
     $registry->register('MethodLevelAuthActions.secured', [MethodLevelAuthActions::class, 'secured']);
 
     $registry->execute('MethodLevelAuthActions.secured', []);
 })->throws(AuthenticationException::class);
 
-test('method without Authenticated attribute does not require auth', function () {
+test('method without a guard does not require auth', function () {
     $registry = freshRegistry();
     $registry->register('MethodLevelAuthActions.open', [MethodLevelAuthActions::class, 'open']);
 
@@ -115,10 +115,9 @@ test('method without Authenticated attribute does not require auth', function ()
     expect($result)->toBe('open');
 });
 
-test('class-level Can throws AuthorizationException when unauthorized', function () {
-    Gate::shouldReceive('authorize')
-        ->with('admin', [])
-        ->andThrow(new AuthorizationException('This action is unauthorized.'));
+test('class-level Authorize throws AuthorizationException when unauthorized', function () {
+    auth()->setUser(new User);
+    Gate::define('admin', fn () => false);
 
     $registry = freshRegistry();
     $registry->register('GatedActions.reset', [GatedActions::class, 'reset']);
@@ -126,10 +125,9 @@ test('class-level Can throws AuthorizationException when unauthorized', function
     $registry->execute('GatedActions.reset', []);
 })->throws(AuthorizationException::class);
 
-test('method-level Can with model throws AuthorizationException when unauthorized', function () {
-    Gate::shouldReceive('authorize')
-        ->with('delete', ['App\Models\Todo'])
-        ->andThrow(new AuthorizationException('This action is unauthorized.'));
+test('method-level Authorize with model throws AuthorizationException when unauthorized', function () {
+    auth()->setUser(new User);
+    Gate::define('delete', fn (User $user, string $model) => $model !== 'App\Models\Todo');
 
     $registry = freshRegistry();
     $registry->register('MethodGatedActions.remove', [MethodGatedActions::class, 'remove']);

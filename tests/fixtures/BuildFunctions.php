@@ -8,9 +8,8 @@ use Illuminate\Contracts\Session\Session;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Attributes\Controllers\Authorize;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
-use RscKit\Attributes\Authenticated;
-use RscKit\Attributes\Can;
 
 class BuildForm extends FormRequest
 {
@@ -77,13 +76,13 @@ class BuildTeam
 
 class BuildGuarded
 {
-    #[Authenticated]
+    #[Middleware('auth')]
     public function signedIn(): string
     {
         throw new \LogicException('ran');
     }
 
-    #[Can('view')]
+    #[Authorize('view')]
     public function allowed(): string
     {
         throw new \LogicException('ran');
@@ -96,7 +95,7 @@ class BuildGuarded
     }
 }
 
-#[Authenticated]
+#[Middleware('auth')]
 abstract class BuildGuardedParent
 {
     public function inherited(): string

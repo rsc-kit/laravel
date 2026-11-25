@@ -58,6 +58,13 @@ class RscHostManifestCommand extends Command
             ARRAY_FILTER_USE_KEY,
         );
 
+        if ($dead = CallableRegistry::deadGuards($callables)) {
+            // On stderr: --print's stdout is the manifest.
+            file_put_contents('php://stderr', implode("\n", $dead)."\n");
+
+            return self::FAILURE;
+        }
+
         $functions = array_keys($callables);
 
         sort($functions);

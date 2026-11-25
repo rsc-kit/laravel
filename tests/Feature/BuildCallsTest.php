@@ -182,10 +182,10 @@ describe('needs a visitor', function () {
     it('does not run what is guarded, or takes a form', function (mixed $callable, string $what) {
         expect(ask($callable))->toBe(['id' => 1, 'visitor' => [$what], 'ended' => false]);
     })->with([
-        [[BuildGuarded::class, 'signedIn'], '#[Authenticated]'],
-        [[BuildGuarded::class, 'allowed'], '#[Can]'],
+        [[BuildGuarded::class, 'signedIn'], '#[Middleware]'],
+        [[BuildGuarded::class, 'allowed'], '#[Authorize]'],
         [[BuildGuarded::class, 'throttled'], '#[Middleware]'],
-        [[BuildGuardedChild::class, 'inherited'], '#[Authenticated]'],
+        [[BuildGuardedChild::class, 'inherited'], '#[Middleware]'],
         [fn (BuildForm $form) => throw new LogicException('ran'), 'a form'],
     ]);
 

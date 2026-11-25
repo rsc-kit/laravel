@@ -163,12 +163,12 @@ php artisan make:rsc-action Orders --method=cancel --auth --can=update,Order --r
 // app/Rsc/Actions/Orders.php
 namespace App\Rsc\Actions;
 
-use RscKit\Attributes\Authenticated;
+use Illuminate\Routing\Attributes\Controllers\Middleware;
 use RscKit\Rsc;
 
 class Orders
 {
-    #[Authenticated]
+    #[Middleware('auth')]
     public function cancel(CancelOrder $request): void
     {
         $request->order()->cancel();
@@ -187,9 +187,25 @@ re-rendered section back with the action's answer.
 
 ## Refusing
 
-`#[Authenticated]` and `#[Can]` (`RscKit\Attributes`) and Laravel's own
-`#[Middleware]` go on a class or a method. What is thrown reaches the render
-as itself rather than as a broken page:
+Laravel's own `#[Middleware]`, `#[Authorize]` and `#[WithoutMiddleware]`
+(`Illuminate\Routing\Attributes\Controllers`) go on a class or a method, as they
+do on a controller:
+
+```php
+#[Middleware('auth')]
+class Orders
+{
+    #[Authorize('cancel', Order::class)]
+    public function cancel(int $id): void { /* … */ }
+}
+```
+
+Name a class in `#[Authorize]`: a call has no route to bind a model from, so a
+policy on one order is `Gate::authorize('cancel', $order)` in the method. A
+guard PHP cannot make, usually a forgotten or wrong `use`, fails
+`rsc:host-manifest` and the call, rather than being ignored.
+
+What is thrown reaches the render as itself rather than as a broken page:
 
 | thrown in PHP | the render gets |
 | --- | --- |

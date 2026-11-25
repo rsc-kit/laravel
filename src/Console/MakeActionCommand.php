@@ -33,8 +33,8 @@ class MakeActionCommand extends Command
         {name : The class name, StudlyCase; a slash nests it (Billing/Invoices)}
         {--rpc : A class for rpc() under app/Rsc, rather than a server action under app/Rsc/Actions}
         {--method=* : A method per call; none means the class is invokable}
-        {--auth : Require a signed-in visitor (#[Authenticated])}
-        {--can=* : A policy check, ability or ability,Model (#[Can])}
+        {--auth : Require a signed-in visitor (auth middleware)}
+        {--can=* : A policy check, ability or ability,Model (#[Authorize])}
         {--middleware=* : A route middleware by name (#[Middleware])}
         {--revalidate= : What the action makes stale, a section or page name}
         {--form : A public form: the action takes a FormRequest, which is written too, with the form in resources/js/forms}
@@ -145,8 +145,8 @@ class MakeActionCommand extends Command
         $attributes = [];
 
         if ($this->option('auth')) {
-            $uses[] = 'RscKit\Attributes\Authenticated';
-            $attributes[] = '#[Authenticated]';
+            $uses[] = 'Illuminate\Routing\Attributes\Controllers\Middleware';
+            $attributes[] = "#[Middleware('auth')]";
         }
 
         foreach ((array) $this->option('can') as $can) {
@@ -154,14 +154,14 @@ class MakeActionCommand extends Command
             $ability = trim((string) $ability);
             $model = $model !== null ? trim($model) : null;
 
-            $uses[] = 'RscKit\Attributes\Can';
+            $uses[] = 'Illuminate\Routing\Attributes\Controllers\Authorize';
 
             if ($model !== null && $model !== '') {
                 $model = Str::studly($model);
                 $uses[] = "App\\Models\\{$model}";
-                $attributes[] = "#[Can('{$ability}', {$model}::class)]";
+                $attributes[] = "#[Authorize('{$ability}', {$model}::class)]";
             } else {
-                $attributes[] = "#[Can('{$ability}')]";
+                $attributes[] = "#[Authorize('{$ability}')]";
             }
         }
 
