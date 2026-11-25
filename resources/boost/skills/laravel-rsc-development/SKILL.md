@@ -193,12 +193,18 @@ const orders = await rpc<Order[]>('Orders.recent', 5)
 - The name is `Class.method`; an invokable class is reached by its class name.
 - The call runs as the visitor: their cookie is forwarded, so `auth()->user()`
   is them. The class is resolved through the container.
+- A method takes services after or before its arguments, as a controller's does
+  (rsc-kit/laravel 0.28): `register(RegisterRequest $request, RegisterUser
+  $register)` is called with the form alone, and `#[CurrentUser] User $user`
+  is the visitor, a guest answered 401 unless it is nullable. Only a required
+  class is injected. A model, a `Request`, an enum, a date or a data object
+  never is: take an id and find it, under the method's own authorization.
 - The call is typed from the PHP signature, through `rsc-host.json`:
   `rpc('Orders.find', 7)` is the method's return type, and a wrong name or
   argument fails the typecheck. Make a class with
   `php artisan make:rsc-action Orders --rpc --method=recent`.
 - Typed: `int`, `float`, `string`, `bool` parameters (nullable, defaults
-  optional, variadic); a `FormRequest` first parameter from its `rules()`; a
+  optional, variadic); a `FormRequest` argument in front from its `rules()`; a
   result that is a scalar, a backed enum, or a plain class with public typed
   properties. **Return a data object rather than an array** to type the
   result. `array`, models and collections stay `unknown`: write

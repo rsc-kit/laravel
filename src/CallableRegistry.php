@@ -22,6 +22,7 @@ use ReflectionNamedType;
 use RscKit\Attributes\Authenticated;
 use RscKit\Attributes\Can;
 use RscKit\Support\ActionManifest;
+use RscKit\Support\Injected;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\InputBag;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -163,13 +164,13 @@ class CallableRegistry
         }
 
         if ($callable instanceof Closure) {
-            return $callable(...$this->resolveFormRequest(new ReflectionFunction($callable), $args));
+            return $callable(...$this->arguments(new ReflectionFunction($callable), $args));
         }
 
         if (is_string($callable)) {
             $this->authorize($callable, '__invoke');
             $instance = $this->resolveInstance($callable);
-            $args = $this->resolveFormRequest(new ReflectionMethod($callable, '__invoke'), $args);
+            $args = $this->arguments(new ReflectionMethod($callable, '__invoke'), $args);
 
             return $instance(...$args);
         }
@@ -178,7 +179,7 @@ class CallableRegistry
             [$class, $method] = $callable;
             $this->authorize($class, $method);
             $instance = $this->resolveInstance($class);
-            $args = $this->resolveFormRequest(new ReflectionMethod($class, $method), $args);
+            $args = $this->arguments(new ReflectionMethod($class, $method), $args);
 
             return $instance->{$method}(...$args);
         }
@@ -187,9 +188,9 @@ class CallableRegistry
     }
 
     /**
-     * Whether a callable can be checked without running: its first parameter
-     * is a form request, which is where its validation is. Validation written
-     * inside the method runs only by running it.
+     * Whether a callable can be checked without running: the first argument it
+     * takes is a form request, which is where its validation is. Validation
+     * written inside the method runs only by running it.
      *
      * @param  array{class-string, string}|class-string|Closure  $callable
      */
@@ -205,7 +206,7 @@ class CallableRegistry
             return false;
         }
 
-        $type = ($reflection->getParameters()[0] ?? null)?->getType();
+        $type = (Injected::leaves($reflection)[0] ?? null)?->getType();
 
         return $type instanceof ReflectionNamedType
             && ! $type->isBuiltin()
@@ -410,7 +411,20 @@ class CallableRegistry
     }
 
     /**
-     * If the callable's first parameter type-hints a FormRequest, build one
+     * Everything the callable takes: the call's arguments, its form request
+     * validated first, then what the container makes. A refused form makes
+     * nothing.
+     *
+     * @param  array<int, mixed>  $args
+     * @return array<int, mixed>
+     */
+    private function arguments(ReflectionFunctionAbstract $callable, array $args): array
+    {
+        return Injected::fill($callable, $this->resolveFormRequest($callable, $args), $this->container);
+    }
+
+    /**
+     * If the first argument the callable takes is a FormRequest, build one
      * from this call's args and validate it, as Laravel would on a route.
      *
      * What follows the form is passed on, and is the request's route
@@ -424,7 +438,7 @@ class CallableRegistry
      */
     private function resolveFormRequest(ReflectionFunctionAbstract $callable, array $args, ?array $validate = null): array
     {
-        $params = $callable->getParameters();
+        $params = Injected::leaves($callable);
 
         if ($params === []) {
             return $args;

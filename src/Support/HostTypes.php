@@ -32,7 +32,8 @@ use UnitEnum;
  * PHP method, and a misspelt argument fails its typecheck.
  *
  * Only what PHP can say for certain. A parameter is positional, as the
- * registry calls it; a FormRequest in front is the call's first argument, its
+ * registry calls it, and one the container makes is no argument at all - see
+ * Injected; a FormRequest in front is the call's first argument, its
  * fields read from rules(), and any after it - a record's key - are typed as
  * themselves. A result is typed when it is a scalar, a backed
  * enum, or a plain class whose public properties are what json_encode writes.
@@ -135,7 +136,7 @@ class HostTypes
     /** @return array<string, mixed> */
     private function signature(ReflectionFunctionAbstract $fn): array
     {
-        $params = $fn->getParameters();
+        $params = Injected::leaves($fn);
         $signature = ['params' => []];
 
         $first = $params[0] ?? null;
