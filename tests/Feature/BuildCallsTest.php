@@ -27,6 +27,7 @@ use Tests\Fixtures\BuildGuardedChild;
 use Tests\Fixtures\BuildTakesRequest;
 use Tests\Fixtures\BuildTakesSession;
 use Tests\Fixtures\BuildTakesUser;
+use Tests\Fixtures\BuildTakesUserByAttribute;
 use Tests\Fixtures\BuildTeam;
 
 require_once __DIR__.'/../fixtures/BuildFunctions.php';
@@ -174,6 +175,8 @@ describe('needs a visitor', function () {
         [BuildTakesRequest::class, 'agent', 'a request header'],
         [BuildTakesSession::class, 'cart', 'the session'],
         [BuildTakesUser::class, 'name', 'the session'],
+        [BuildTakesUserByAttribute::class, 'name', 'the session'],
+        [BuildTakesUserByAttribute::class, 'maybe', 'the session'],
     ]);
 
     it('does not run what is guarded, or takes a form', function (mixed $callable, string $what) {

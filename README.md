@@ -99,6 +99,26 @@ class Posts
 }
 ```
 
+A method takes services as a controller's does, and the call's arguments are
+what is left:
+
+```php
+public function register(RegisterRequest $request, RegisterUser $register): void
+{
+    $register->execute($request->validated());
+}
+
+public function rename(#[CurrentUser] User $user, string $name): void
+{
+    $user->update(['name' => $name]);
+}
+```
+
+The browser sends the form and the name. It cannot send the service or the
+user, and the generated function has no argument for either. A guest is answered
+401 where `#[CurrentUser]` is not nullable. A model, a `Request`, an enum, a date
+or a data object is never injected: take an id, and find it.
+
 A page that calls it:
 
 ```tsx

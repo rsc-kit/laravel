@@ -2,8 +2,10 @@
 
 namespace Tests\Fixtures;
 
+use Illuminate\Container\Attributes\CurrentUser;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Session\Session;
+use Illuminate\Foundation\Auth\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
@@ -46,6 +48,19 @@ class BuildTakesUser
     public function name(): ?string
     {
         return $this->user?->getAuthIdentifier();
+    }
+}
+
+class BuildTakesUserByAttribute
+{
+    public function name(#[CurrentUser] User $user): mixed
+    {
+        throw new \LogicException('ran');
+    }
+
+    public function maybe(#[CurrentUser] ?User $user): mixed
+    {
+        return $user?->getAuthIdentifier();
     }
 }
 
