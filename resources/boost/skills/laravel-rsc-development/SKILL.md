@@ -421,7 +421,8 @@ page redirects there. Every page route is named after its path - a parameter
 by its own name - unless the app already gave a route that name:
 `app/login/page.tsx` is `route('login')`, `app/merchant/onboarding/page.tsx` is
 `route('merchant.onboarding')`, `app/orders/[id]/page.tsx` is
-`route('orders.id', $id)`; the root page has no name. With no login page, say
+`route('orders.id', $id)`; the root page has no name. A page at the url of a
+named route of the app's keeps that route's name. With no login page, say
 where guests go in `bootstrap/app.php`, or `auth` fails with "Route [login] not
 defined":
 
@@ -446,6 +447,14 @@ Then its pages are routes on the subdomain, without the folder:
 href="/merchant/orders">`, `visit()` and `redirect()` go to the subdomain with
 no `hostUrl`. `example.test/merchant` is then the subdomain's home, not a page
 of the site - put a landing page in its own folder (`app/sell/`).
+
+Laravel asks for a few routes by a fixed name, and a page in a folder never has
+it. Tell Laravel the page's name instead: `'verified:merchant.verify-email'` and
+`'password.confirm:merchant.confirm-password'` in `middleware.ts`,
+`redirectGuestsTo()` for `login`, `redirectUsersTo()` for where `guest` sends
+someone signed in, `ResetPassword::createUrlUsing()` for the reset email's link.
+The verification email's link is not a page: define `verification.verify` in
+`routes/web.php`, under a path in `backendPaths`, or sending the email throws.
 
 When login lives on the main site instead (a `merchant.` subdomain signing in
 there), give the full url:

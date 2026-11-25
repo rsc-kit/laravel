@@ -5,6 +5,7 @@ namespace RscKit;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Routing\Middleware\SubstituteBindings;
+use Illuminate\Routing\RouteCollection;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -247,16 +248,34 @@ class RscKitServiceProvider extends ServiceProvider
         $site = parse_url((string) config('app.url'), PHP_URL_HOST) ?: null;
         $subdomains = array_values(array_filter((array) ($manifest['build']['subdomains'] ?? []), fn ($label) => is_string($label) && $label !== ''));
 
+        // What the application registered, before any page takes a url of its.
+        // Not for cached routes: their names were settled when the cache was
+        // written, and listing them rebuilds every one.
+        $existing = $routes instanceof RouteCollection ? $routes->getRoutesByMethod() : [];
+
         foreach (RendererRoutes::patterns($manifest) as [$pattern, $catchAll, $methods]) {
             [$domain, $uri] = RendererRoutes::placement($pattern, $subdomains, $site);
-            $route = Route::addRoute($methods, $uri, RendererProxy::class)->middleware('web');
+            $replaced = $existing[$methods[0]][$domain.(trim($uri, '/') ?: '/')] ?? null;
 
-            if ($domain !== null) {
-                $route->domain($domain);
-            }
+            // The domain is the group's, so the route has it when it is filed.
+            // Set on the route after, it was filed by its path alone, and the
+            // site's route at that path was replaced - or replaced it.
+            Route::group($domain === null ? [] : ['domain' => $domain], function () use (&$route, $methods, $uri) {
+                $route = Route::addRoute($methods, $uri, RendererProxy::class)->middleware('web');
+            });
 
             foreach ($catchAll as $name) {
                 $route->where($name, '.*');
+            }
+
+            // The application's route this page takes the url of is gone, and
+            // its name is the page's to keep: route('verification.notice') is
+            // what Laravel asks for, not the page's path. With other methods
+            // beside GET it is still listed, and still has its name.
+            if ($replaced?->getName() !== null && $replaced->methods() === $route->methods()) {
+                $route->name($replaced->getName());
+
+                continue;
             }
 
             $name = in_array('GET', $methods, true) ? ($names[$pattern] ?? null) : null;
