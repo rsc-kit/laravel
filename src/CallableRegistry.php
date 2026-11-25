@@ -3,36 +3,40 @@
 namespace RscKit;
 
 use Closure;
+use Error;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
+use Illuminate\Routing\Attributes\Controllers\WithoutMiddleware;
 use Illuminate\Routing\Redirector;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
+use LogicException;
+use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
-use RscKit\Attributes\Authenticated;
-use RscKit\Attributes\Can;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\Injected;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\InputBag;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
 class CallableRegistry
 {
+    /** What a guard is called, lower-cased as PHP compares it. */
+    private const GUARDS = ['middleware', 'authorize', 'authenticated', 'can'];
+
     /** @var array<string, array{class-string, string}|class-string|Closure> */
     private array $callables = [];
 
-    /** @var array<string, array{authenticated: Authenticated[], can: Can[], middleware: list<Closure|string>}> */
+    /** @var array<string, array{middleware: list<Closure|string>, without: list<string>, names: list<string>}> */
     private array $attributeCache = [];
 
     public function __construct(private Container $container) {}
@@ -253,12 +257,7 @@ class CallableRegistry
         [$class, $method] = is_array($callable) ? $callable : [$callable, '__invoke'];
         $attrs = $this->resolveAttributes($class, $method);
 
-        return match (true) {
-            $attrs['authenticated'] !== [] => '#[Authenticated]',
-            $attrs['can'] !== [] => '#[Can]',
-            $attrs['middleware'] !== [] => '#[Middleware]',
-            default => null,
-        };
+        return $attrs['names'] === [] ? null : "#[{$attrs['names'][0]}]";
     }
 
     /**
@@ -277,114 +276,184 @@ class CallableRegistry
 
         $attrs = $this->attributeCache[$cacheKey];
 
-        foreach ($attrs['middleware'] as $middleware) {
-            $this->runMiddleware($middleware);
-        }
-
-        foreach ($attrs['authenticated'] as $attr) {
-            if (! Auth::guard($attr->guard)->check()) {
-                throw new AuthenticationException('Unauthenticated.', [$attr->guard ?? config('auth.defaults.guard')]);
-            }
-        }
-
-        foreach ($attrs['can'] as $attr) {
-            $arguments = $attr->model !== null ? [$attr->model] : [];
-            Gate::authorize($attr->ability, $arguments);
-        }
+        $this->runMiddleware($attrs['middleware'], $attrs['without']);
     }
 
     /**
-     * Reflect attributes from both class and method, merging them together.
+     * The guards on a class, every parent of it, and the method.
      *
-     * @return array{authenticated: Authenticated[], can: Can[], middleware: list<Closure|string>}
+     * PHP's getAttributes() reads one class only, so a guard on an abstract
+     * AdminAction guarded nothing that extended it - and the methods it
+     * guarded are inherited, which is how they were discovered in the first
+     * place. It also matches a name exactly unless told otherwise, and
+     * Laravel's #[Authorize] extends #[Middleware]: read by name, it was no
+     * guard at all and the method ran for anyone.
+     *
+     * Laravel's own are read as its router reads them on a controller: the
+     * parent's first, then the class's, then the method's, with `only` and
+     * `except`.
+     *
+     * @return array{middleware: list<Closure|string>, without: list<string>, names: list<string>}
+     *
+     * @throws LogicException
      */
     private function resolveAttributes(string $class, string $method): array
     {
-        $refClass = new ReflectionClass($class);
-        $middlewareAttribute = Middleware::class;
+        $sources = self::guardSources($class, $method);
 
-        // The class and every parent. PHP's getAttributes() reads one class
-        // only, so #[Authenticated] on an abstract AdminAction guarded nothing
-        // that extended it - and the methods it guarded are inherited, which
-        // is how they were discovered in the first place.
-        $lineage = [];
-
-        for ($c = $refClass; $c !== false; $c = $c->getParentClass()) {
-            $lineage[] = $c;
+        if ($dead = self::deadGuard($sources)) {
+            throw new LogicException($dead);
         }
 
-        $fromLineage = fn (string $attribute): array => array_merge(
-            ...array_map(fn (ReflectionClass $c): array => $c->getAttributes($attribute), $lineage),
+        /**
+         * @template T of object
+         *
+         * @param  class-string<T>  $attribute
+         * @return list<T>
+         */
+        $read = fn (string $attribute): array => array_map(
+            fn (ReflectionAttribute $a): object => $a->newInstance(),
+            array_merge(...array_map(
+                fn (ReflectionClass|ReflectionMethod $source): array => $source->getAttributes($attribute, ReflectionAttribute::IS_INSTANCEOF),
+                $sources,
+            )),
         );
 
-        $authenticated = array_map(
-            fn (\ReflectionAttribute $a): Authenticated => $a->newInstance(),
-            $fromLineage(Authenticated::class),
+        $applies = fn (Middleware|WithoutMiddleware $a): bool => ! Route::methodExcludedByOptions(
+            $method, ['only' => $a->only, 'except' => $a->except],
         );
 
-        $can = array_map(
-            fn (\ReflectionAttribute $a): Can => $a->newInstance(),
-            $fromLineage(Can::class),
-        );
-
-        // Closure|string, as Laravel's attribute declares it: an inline
-        // middleware is as much a guard as a named one, and typing this as
-        // string turned one into a TypeError on every call it guarded.
-        $middleware = array_map(
-            fn (\ReflectionAttribute $a): Closure|string => $a->newInstance()->middleware,
-            $fromLineage($middlewareAttribute),
-        );
-
-        if ($method !== '__invoke' || $refClass->hasMethod($method)) {
-            $refMethod = $refClass->getMethod($method);
-
-            $authenticated = array_merge($authenticated, array_map(
-                fn (\ReflectionAttribute $a): Authenticated => $a->newInstance(),
-                $refMethod->getAttributes(Authenticated::class),
-            ));
-
-            $can = array_merge($can, array_map(
-                fn (\ReflectionAttribute $a): Can => $a->newInstance(),
-                $refMethod->getAttributes(Can::class),
-            ));
-
-            $middleware = array_merge($middleware, array_map(
-                fn (\ReflectionAttribute $a): Closure|string => $a->newInstance()->middleware,
-                $refMethod->getAttributes($middlewareAttribute),
-            ));
-        }
+        $guards = array_values(array_filter($read(Middleware::class), $applies));
 
         // Named middleware once each - a class and its parent both saying
         // 'auth' is one guard. A closure is its own; array_unique would have
         // to turn it into a string to compare it, and cannot.
+        $middleware = array_map(fn (Middleware $a): Closure|string => $a->middleware, $guards);
         $named = array_unique(array_filter($middleware, 'is_string'));
 
         return [
-            'authenticated' => $authenticated,
-            'can' => $can,
             'middleware' => array_values(array_filter(
                 $middleware,
                 fn (Closure|string $m, int $i) => ! is_string($m) || isset($named[$i]),
                 ARRAY_FILTER_USE_BOTH,
             )),
+            'without' => array_values(array_map(
+                fn (WithoutMiddleware $a): string => $a->middleware,
+                array_filter($read(WithoutMiddleware::class), $applies),
+            )),
+            'names' => array_map(fn (object $a): string => class_basename($a), $guards),
         ];
     }
 
     /**
-     * Resolve and run a single middleware through Laravel's Pipeline.
+     * Where a callable's guards are written, outermost first: the furthest
+     * parent, down to the class, then the method.
+     *
+     * @param  class-string  $class
+     * @return list<ReflectionClass<object>|ReflectionMethod>
      */
-    private function runMiddleware(Closure|string $middleware): void
+    private static function guardSources(string $class, string $method): array
     {
-        $request = $this->container->make('request');
+        $refClass = new ReflectionClass($class);
+        $sources = [];
 
-        // Resolve middleware alias (e.g. 'auth' → Authenticate::class)
-        // through the router so Pipeline gets the actual class, not the helper
-        // function. A closure is already the thing to run.
-        $resolved = $middleware instanceof Closure
-            ? [$middleware]
-            : $this->container->make(Router::class)->resolveMiddleware([$middleware]);
+        for ($c = $refClass; $c !== false; $c = $c->getParentClass()) {
+            array_unshift($sources, $c);
+        }
 
-        RouteMiddleware::through($this->container, $request, $resolved);
+        if ($refClass->hasMethod($method)) {
+            $sources[] = $refClass->getMethod($method);
+        }
+
+        return $sources;
+    }
+
+    /**
+     * The guard among these that guards nothing, as a sentence, or null.
+     *
+     * PHP says nothing about an attribute until it is made. One whose `use`
+     * was forgotten, or names Illuminate\Routing\Controllers\Middleware,
+     * which is no attribute, or is the #[Authenticated] or #[Can] this package
+     * had before it read Laravel's, would leave the method open to anyone, so
+     * the call is refused instead.
+     *
+     * @param  list<ReflectionClass<object>|ReflectionMethod>  $sources
+     */
+    private static function deadGuard(array $sources): ?string
+    {
+        foreach ($sources as $source) {
+            foreach ($source->getAttributes() as $attribute) {
+                if (! in_array(strtolower(class_basename($attribute->getName())), self::GUARDS, true)) {
+                    continue;
+                }
+
+                try {
+                    $attribute->newInstance();
+                } catch (Error $e) {
+                    return sprintf(
+                        '%s is guarded by #[%s], which guards nothing: %s. It would be open to anyone. '
+                        .'Use Illuminate\Routing\Attributes\Controllers\Middleware, as #[Middleware(\'auth\')], or Authorize.',
+                        $source instanceof ReflectionMethod ? "{$source->class}::{$source->name}()" : $source->name,
+                        $attribute->getName(),
+                        $e->getMessage(),
+                    );
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Every guard that guards nothing, for the build to fail on before a
+     * visitor's call does.
+     *
+     * @param  array<string, array{class-string, string}|class-string|Closure>  $callables
+     * @return list<string>
+     */
+    public static function deadGuards(array $callables): array
+    {
+        $dead = [];
+
+        foreach ($callables as $callable) {
+            if (! $callable instanceof Closure) {
+                [$class, $method] = is_array($callable) ? $callable : [$callable, '__invoke'];
+                $dead[] = self::deadGuard(self::guardSources($class, $method));
+            }
+        }
+
+        return array_values(array_unique(array_filter($dead)));
+    }
+
+    /**
+     * Run a callable's middleware as a route's: an alias made its class, a
+     * group its members, sorted by Laravel's priority - so `auth` has chosen
+     * the guard before a policy asks who it is - and less what the class or
+     * method goes without.
+     *
+     * @param  list<Closure|string>  $middleware
+     * @param  list<string>  $without
+     */
+    private function runMiddleware(array $middleware, array $without): void
+    {
+        if ($middleware === []) {
+            return;
+        }
+
+        $resolved = $this->container->make(Router::class)->resolveMiddleware($middleware, $without);
+
+        try {
+            RouteMiddleware::through($this->container, $this->container->make('request'), $resolved);
+        } catch (RouteNotFoundException $e) {
+            // `auth` asks for route('login') before it refuses, to have
+            // somewhere to send the guest. A call sends nobody anywhere: it
+            // answers 401, so an app with no such route still refuses as one.
+            if (! str_contains($e->getMessage(), '[login]')) {
+                throw $e;
+            }
+
+            throw new AuthenticationException;
+        }
     }
 
     public function hasCallables(): bool

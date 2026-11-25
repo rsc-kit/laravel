@@ -317,7 +317,7 @@ stdout, until stdin ends.
   `catch` in the app can't hide it. Watched: the request's headers, cookies,
   address and user agent, the session, the guards, and a cookie set. The host,
   scheme, path and the call's own arguments are not the visitor's.
-- A function under `#[Authenticated]`, `#[Can]` or `#[Middleware]`, or whose
+- A function under `#[Middleware]` or `#[Authorize]`, or whose
   first parameter is a form request, is answered `visitor` without running.
 - **`"last": true`** follows a call that read the visitor: what it left behind -
   a resolved guard, a started session - is not for the next call, so the build

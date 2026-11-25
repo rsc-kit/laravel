@@ -37,7 +37,7 @@ Follow these on every change; each is explained below.
 - **Live data:** `refreshOn` on the section and `Rsc::changed()` where the data
   changes, after the transaction commits. `usePolling` only for data nothing
   can announce.
-- **Authorisation lives in the callable** - `#[Authenticated]`, `#[Can]`, a
+- **Authorisation lives in the callable** - `#[Middleware('auth')]`, `#[Authorize]`, a
   policy - never only in the component that shows the button.
 - **Links and redirects are typed:** ``<Link href={`/orders/${id}`}>``, a
   template literal, so a renamed page fails the typecheck.
@@ -260,8 +260,8 @@ The build renders every route, and asks Laravel what `rpc()` returns
 and stored with the page. Do not mark anything: there is no attribute for it.
 
 - A function that reads the visitor (`auth()`, a gate, the session, a cookie,
-  a header, the address) or declares `#[Authenticated]`, `#[Can]`,
-  `#[Middleware]` or a `FormRequest` is left to the request, and its slot
+  a header, the address) or declares `#[Middleware]`, `#[Authorize]`
+  or a `FormRequest` is left to the request, and its slot
   streams. The build report names the call and what it read.
 - `await connection()` before a call keeps it per request. Use it for data
   that must be fresh on every load.
@@ -313,18 +313,28 @@ async function TeamName({ params }) {
 Attributes on a class or method, and the refusal reaches the page as itself:
 
 ```php
-use RscKit\Attributes\Authenticated;
-use RscKit\Attributes\Can;
+use Illuminate\Routing\Attributes\Controllers\Authorize;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 
-#[Authenticated]
+#[Middleware('auth')]
 #[Middleware('throttle:60,1')]
 class Orders
 {
-    #[Can('update', Order::class)]
+    #[Authorize('update', Order::class)]
     public function cancel(int $id): void { /* … */ }
 }
 ```
+
+These are Laravel's, as on a controller, `only`, `except` and
+`#[WithoutMiddleware]` included. `#[Authorize]` takes a class: a call has no route
+to bind a model from, so a policy on one order is `Gate::authorize('update',
+$order)` in the method. **Before rsc-kit/laravel 0.28 `#[Authorize]` guarded
+nothing** - there, use `#[Middleware('can:update,App\Models\Order')]`.
+`RscKit\Attributes\Authenticated` and `Can` are gone in 0.28:
+`#[Authenticated]` is `#[Middleware('auth')]`, `#[Authenticated('admin')]` is
+`#[Middleware('auth:admin')]`, and `#[Can]` is `#[Authorize]`. A guard PHP cannot
+make - one of those, a forgotten `use`, or `Illuminate\Routing\Controllers\Middleware`,
+which is no attribute - fails `rsc:host-manifest` and the call, and names itself.
 
 | in PHP | the page gets |
 | --- | --- |
@@ -470,12 +480,12 @@ php artisan make:rsc-action Orders --method=cancel --auth --can=update,Order --r
 ```php
 namespace App\Rsc\Actions;
 
-use RscKit\Attributes\Authenticated;
+use Illuminate\Routing\Attributes\Controllers\Middleware;
 use RscKit\Rsc;
 
 class Orders
 {
-    #[Authenticated]
+    #[Middleware('auth')]
     public function cancel(CancelOrder $request): void
     {
         $request->order()->cancel();

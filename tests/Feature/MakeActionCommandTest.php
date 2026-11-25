@@ -30,8 +30,11 @@ it('writes a server action with its methods and guards', function () {
 
     expect($source)
         ->toContain('namespace App\Rsc\Actions;')
-        ->toContain('#[Authenticated]')
-        ->toContain("#[Can('update', Order::class)]")
+        ->toContain('use Illuminate\Routing\Attributes\Controllers\Authorize;')
+        ->toContain('use Illuminate\Routing\Attributes\Controllers\Middleware;')
+        ->toContain("#[Middleware('auth')]")
+        ->toContain("#[Authorize('update', Order::class)]")
+        ->not->toContain('RscKit\Attributes')
         ->toContain('use App\Models\Order;')
         ->toContain("#[Middleware('throttle:60,1')]")
         ->toContain('public function cancel(): mixed')
