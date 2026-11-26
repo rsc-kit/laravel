@@ -494,7 +494,8 @@ class CallableRegistry
 
     /**
      * If the first argument the callable takes is a FormRequest, build one
-     * from this call's args and validate it, as Laravel would on a route.
+     * from this call's args and validate it, as Laravel would on a route. A
+     * plain Request is built the same way and not validated.
      *
      * What follows the form is passed on, and is the request's route
      * parameters by the method's own names: a panel's update(values, id)
@@ -521,8 +522,12 @@ class CallableRegistry
         }
 
         $typeName = $type->getName();
+        $form = is_subclass_of($typeName, FormRequest::class);
 
-        if (! is_subclass_of($typeName, FormRequest::class)) {
+        // logout(Request $request), as a controller's: the call's own request,
+        // the form's fields its input. Never the endpoint's, whose input is
+        // the envelope: $request->input('email') answered nothing.
+        if (! $form && ! is_a($typeName, Request::class, true)) {
             return $args;
         }
 
@@ -540,6 +545,10 @@ class CallableRegistry
 
         if ($rest !== []) {
             $this->routeTo($callRequest, array_slice($params, 1), $rest);
+        }
+
+        if (! $form) {
+            return [$typeName === Request::class ? $callRequest : $typeName::createFrom($callRequest), ...$rest];
         }
 
         // Built and filled here rather than made by the container, which

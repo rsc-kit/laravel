@@ -197,8 +197,13 @@ const orders = await rpc<Order[]>('Orders.recent', 5)
   (rsc-kit/laravel 0.28): `register(RegisterRequest $request, RegisterUser
   $register)` is called with the form alone, and `#[CurrentUser] User $user`
   is the visitor, a guest answered 401 unless it is nullable. Only a required
-  class is injected. A model, a `Request`, an enum, a date or a data object
-  never is: take an id and find it, under the method's own authorization.
+  class is injected. A model, an enum, a date or a data object never is: take
+  an id and find it, under the method's own authorization.
+- `logout(Request $request)` works as in a controller (0.29): the
+  `Illuminate\Http\Request` is the call's, its input the form's fields (none
+  from a button), with the visitor's session, user and IP. Not validated; take
+  a `FormRequest` for that. `request()` is still the host call's - use the
+  parameter.
 - The call is typed from the PHP signature, through `rsc-host.json`:
   `rpc('Orders.find', 7)` is the method's return type, and a wrong name or
   argument fails the typecheck. Make a class with
