@@ -5,7 +5,9 @@ use Illuminate\Http\Request;
 use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 use RscKit\CallableRegistry;
+use RscKit\CallableRegistry as Registry;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Revalidation;
 use RscKit\Support\HostTypes;
@@ -59,6 +61,16 @@ class PlainRequestActions
     public function keyed(Request $request, string $order): array
     {
         return [$request->route('order'), $order, $request->input('note')];
+    }
+
+    public function validated(Request $request): array
+    {
+        return $request->validate(['email' => 'required|email']);
+    }
+
+    public function validator(Request $request): array
+    {
+        return Validator::make($request->all(), ['email' => 'required|email'])->validate();
     }
 
     public function mine(PlainRequestOfMine $request): ?string
@@ -122,4 +134,20 @@ it('is typed as the form, which may be left out when nothing follows it', functi
     expect(plainRequestParams('input'))->toMatchArray(['params' => [['type' => 'object']], 'optional' => 1])
         ->and(plainRequestParams('served'))->toMatchArray(['params' => [['type' => 'object']], 'optional' => 1])
         ->and(plainRequestParams('keyed'))->toBe(['params' => [['type' => 'object'], ['type' => 'string']], 'result' => []]);
+});
+
+// Validated by hand, as in a controller: the refusal lands on the form's
+// fields, and what passed is what the form sent.
+it('validates by hand, with $request->validate() or a Validator', function (string $method) {
+    $refused = plainRequest($method, [['email' => 'nope']]);
+
+    expect($refused['status'])->toBe(422)
+        ->and($refused['reply']['validationErrors'])->toHaveKey('email')
+        ->and(plainRequest($method, [['email' => 'a@b.test', 'extra' => 1]])['reply']['result'])->toBe(['email' => 'a@b.test']);
+})->with(['validated', 'validator']);
+
+// Checking a field as it is typed needs the rules before the method runs, and
+// only a FormRequest has them there.
+it('cannot be checked without running', function () {
+    expect(Registry::validatesEarly([PlainRequestActions::class, 'validated']))->toBeFalse();
 });
