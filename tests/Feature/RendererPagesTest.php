@@ -179,3 +179,7 @@ it('can be cached, and keeps the names when it is', function () {
         ->and($cached->getByName('help')->getDomain())->toBeNull()
         ->and($cached->getByName('verification.notice')->getDomain())->toBe('merchant.example.test');
 });
+
+it('names the root page home', function () {
+    expect(route('home', absolute: false))->toBe('/');
+});

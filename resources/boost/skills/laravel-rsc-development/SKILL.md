@@ -421,7 +421,7 @@ page redirects there. Every page route is named after its path - a parameter
 by its own name - unless the app already gave a route that name:
 `app/login/page.tsx` is `route('login')`, `app/merchant/onboarding/page.tsx` is
 `route('merchant.onboarding')`, `app/orders/[id]/page.tsx` is
-`route('orders.id', $id)`; the root page has no name. A page at the url of a
+`route('orders.id', $id)`; the root page is `route('home')`. A page at the url of a
 named route of the app's keeps that route's name. With no login page, say
 where guests go in `bootstrap/app.php`, or `auth` fails with "Route [login] not
 defined":
