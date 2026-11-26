@@ -62,8 +62,10 @@ final class RendererRoutes
      * `merchant.onboarding`, app/orders/[id] is `orders.id`. This is what lets
      * Laravel's own `route('login')` - which `auth` sends a guest to - find a
      * login page the React tree has. The root page has no segment to be named
-     * by, and a route.ts is not somewhere a visitor is sent, so neither is
-     * named.
+     * by, so it is `home`, the name Laravel's starter kits give `/` and the
+     * one `guest` sends a signed-in visitor to - unless app/home is a page,
+     * which has it by its path. A route.ts is not somewhere a visitor is
+     * sent, so it is not named.
      *
      * @param  array<string, mixed>  $manifest
      * @return array<string, string> pattern => name
@@ -71,9 +73,16 @@ final class RendererRoutes
     public static function names(array $manifest): array
     {
         $out = [];
+        $root = false;
 
         foreach ($manifest['routes'] ?? [] as $route) {
-            if (! is_array($route) || ! is_array($route['segments'] ?? null) || $route['segments'] === []) {
+            if (! is_array($route) || ! is_array($route['segments'] ?? null)) {
+                continue;
+            }
+
+            if ($route['segments'] === []) {
+                $root = true;
+
                 continue;
             }
 
@@ -84,6 +93,10 @@ final class RendererRoutes
             }
 
             $out[self::pattern($route['segments'])[0]] = implode('.', $values);
+        }
+
+        if ($root && ! in_array('home', $out, true)) {
+            $out['/'] = 'home';
         }
 
         return $out;

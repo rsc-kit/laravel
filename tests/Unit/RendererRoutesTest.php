@@ -59,5 +59,13 @@ test('a page is named by its path, a parameter by its name', function () {
         '/login' => 'login',
         '/merchant/onboarding' => 'merchant.onboarding',
         '/orders/{id}' => 'orders.id',
+        '/' => 'home',
     ]);
+});
+
+test('the root page is home, unless a page at /home has the name', function () {
+    expect(RendererRoutes::names(['routes' => [
+        ['segments' => []],
+        ['segments' => [['type' => 'static', 'value' => 'home']]],
+    ]]))->toBe(['/home' => 'home']);
 });

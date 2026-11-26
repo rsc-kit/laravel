@@ -1,5 +1,8 @@
 <?php
 
+use Illuminate\Http\Request;
+use Illuminate\Routing\CompiledRouteCollection;
+
 // Decided before the package boots, so it is set as the file loads: a route
 // table the build would have written, with a page at /, a param, a
 // catch-all and a GET-only route.ts.
@@ -19,6 +22,14 @@ file_put_contents($manifest, json_encode([
         ['segments' => [['type' => 'static', 'value' => 'merchant']]],
         ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'onboarding']]],
         ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'orders'], ['type' => 'param', 'value' => 'id']]],
+        // One path on both sites, the site's page listed last.
+        ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'help']]],
+        ['segments' => [['type' => 'static', 'value' => 'help']]],
+        // A path the application has a route for on the site, and only there.
+        ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'login']]],
+        // Where the application has a named route of its own at the same url.
+        ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'verify-email']]],
+        ['segments' => [['type' => 'static', 'value' => 'reports']]],
     ],
     'apis' => [
         ['segments' => [['type' => 'static', 'value' => 'api'], ['type' => 'static', 'value' => 'health']], 'methods' => ['GET']],
@@ -119,4 +130,56 @@ it('puts a page under a folder the build lists in subdomains on that subdomain',
 it('still hands the path form of a subdomain page to the renderer', function () {
     $this->get('http://example.test/merchant/onboarding')->assertStatus(502);
     $this->get('http://example.test/merchant')->assertStatus(502);
+});
+
+// Given its domain after it was added, a page was filed by its path alone, so
+// the two sites' pages at one path overwrote each other: the last kept its
+// route and the other lost its name, and merchant's own / went to the site's.
+it('keeps a page of the same path on the site and on the subdomain', function () {
+    expect(route('merchant.help'))->toBe('http://merchant.example.test/help')
+        ->and(route('help', absolute: false))->toBe('/help');
+});
+
+it("leaves the application's route on the site when only the subdomain has a page there", function () {
+    $this->get('http://merchant.example.test/login')->assertStatus(502);
+    $this->get('http://example.test/login')->assertOk()->assertSee('laravel login');
+});
+
+it('files each page under its domain, with the subdomain home apart from the site home', function () {
+    $routes = app('router')->getRoutes();
+    $domainOf = fn (string $url) => $routes->match(Request::create($url))->getDomain();
+
+    expect($domainOf('http://merchant.example.test/'))->toBe('merchant.example.test')
+        ->and($domainOf('http://example.test/'))->toBeNull()
+        ->and($domainOf('http://merchant.example.test/help'))->toBe('merchant.example.test')
+        ->and($domainOf('http://example.test/help'))->toBeNull();
+});
+
+// The page takes the url, and the route it replaces takes its name with it
+// unless the page keeps it: route('verification.notice') is what Laravel's
+// own `verified` asks for.
+it('keeps the name of a route of the application a page replaces', function () {
+    expect(route('verification.notice'))->toBe('http://merchant.example.test/verify-email')
+        ->and(route('reports.index', absolute: false))->toBe('/reports');
+
+    $this->get('http://merchant.example.test/verify-email')->assertStatus(502);
+    $this->get('http://example.test/reports')->assertStatus(502);
+});
+
+// route:cache refuses two routes of one name, and a cached route must still be
+// found by the name the page kept.
+it('can be cached, and keeps the names when it is', function () {
+    $routes = app('router')->getRoutes();
+    $cached = (new CompiledRouteCollection(...array_values($routes->compile())))
+        ->setRouter(app('router'))
+        ->setContainer(app());
+
+    expect($cached->getByName('merchant')->getDomain())->toBe('merchant.example.test')
+        ->and($cached->getByName('merchant.help')->getDomain())->toBe('merchant.example.test')
+        ->and($cached->getByName('help')->getDomain())->toBeNull()
+        ->and($cached->getByName('verification.notice')->getDomain())->toBe('merchant.example.test');
+});
+
+it('names the root page home', function () {
+    expect(route('home', absolute: false))->toBe('/');
 });
