@@ -217,7 +217,7 @@ it('leaves data to the call rather than make it empty', function (string $method
     expect(injected($method, ['anything'])['status'])->toBe(500);
     expect(injected($method, [])['status'])->toBe(500);
     expect(injectedParams($method))->toHaveCount(1);
-})->with(['model', 'date', 'size', 'data', 'rows', 'http']);
+})->with(['model', 'date', 'size', 'data', 'rows']);
 
 it('leaves a nullable or defaulted class to the call, as it was', function () {
     expect(injected('optional', [null, 'a@b.test'])['reply']['result'])->toBe([null, 'a@b.test']);

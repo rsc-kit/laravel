@@ -17,6 +17,7 @@ $skill = preg_replace('/\s+/', ' ', file_get_contents(dirname(__DIR__, 2).'/reso
 dataset('what an agent must be told', [
     'auth sends a guest to route(\'login\'); without a login page, redirectGuestsTo says where' => ['redirectGuestsTo'],
     'every page route is named after its path, unless the app already used the name' => ['route(\'merchant.onboarding\')'],
+    'a plain Request is the call\'s, the form its input, the visitor\'s session on it' => ['`logout(Request $request)` works as in a controller', 'Not validated; take', '`request()` is still the host call\'s'],
     'the root page is named home' => ["the root page is `route('home')`"],
     'a page in a folder never has the name Laravel asks for, so Laravel is told the page\'s' => ['verified:merchant.verify-email', 'ResetPassword::createUrlUsing()', 'define `verification.verify`'],
     'rscKit({ subdomains }) makes a folder\'s subdomain its only url, and route() builds it' => ["subdomains: ['merchant']", 'example.test/merchant/onboarding` answers 301'],

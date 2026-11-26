@@ -116,8 +116,23 @@ public function rename(#[CurrentUser] User $user, string $name): void
 
 The browser sends the form and the name. It cannot send the service or the
 user, and the generated function has no argument for either. A guest is answered
-401 where `#[CurrentUser]` is not nullable. A model, a `Request`, an enum, a date
-or a data object is never injected: take an id, and find it.
+401 where `#[CurrentUser]` is not nullable. A model, an enum, a date or a data
+object is never injected: take an id, and find it.
+
+A plain `Request` is the call's own, as in a controller: its input is the form's
+fields, and it carries the visitor's session, user and address. It is not
+validated - take a `FormRequest` for that.
+
+```php
+public function logout(Request $request): never
+{
+    Auth::logout();
+    $request->session()->invalidate();
+    $request->session()->regenerateToken();
+
+    throw new RscRedirectException(route('home'));
+}
+```
 
 A page that calls it:
 

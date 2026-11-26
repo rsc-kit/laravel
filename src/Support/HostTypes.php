@@ -11,6 +11,7 @@ use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
 use JsonSerializable;
 use ReflectionClass;
 use ReflectionEnum;
@@ -33,7 +34,7 @@ use UnitEnum;
  *
  * Only what PHP can say for certain. A parameter is positional, as the
  * registry calls it, and one the container makes is no argument at all - see
- * Injected; a FormRequest in front is the call's first argument, its
+ * Injected; a FormRequest or a Request in front is the call's first argument, its
  * fields read from rules(), and any after it - a record's key - are typed as
  * themselves. A result is typed when it is a scalar, a backed
  * enum, or a plain class whose public properties are what json_encode writes.
@@ -151,6 +152,21 @@ class HostTypes
                 if (! $param->isVariadic()) {
                     $signature['params'][] = $this->of($param->getType());
                 }
+            }
+        } elseif ($firstType instanceof ReflectionNamedType && ! $firstType->isBuiltin()
+            && is_a($firstType->getName(), Request::class, true)) {
+            // Its fields, whatever they are, and none at all: logout() from a
+            // button sends no form.
+            $signature['params'][] = ['type' => 'object'];
+
+            foreach (array_slice($params, 1) as $param) {
+                if (! $param->isVariadic()) {
+                    $signature['params'][] = $this->of($param->getType());
+                }
+            }
+
+            if (count($signature['params']) === 1) {
+                $signature['optional'] = 1;
             }
         } else {
             $optional = 0;
