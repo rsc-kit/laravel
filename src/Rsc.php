@@ -19,11 +19,6 @@ namespace RscKit;
  *     Rsc::refuse('Still in use', ['blockers' => $links]);
  *
  * Declines on purpose, with a message and data the page can act on.
- *
- *     Rsc::flash('Invoice sent.');
- *
- * Leaves a message for the page the visitor lands on next, shown once by
- * useFlash().
  */
 class Rsc
 {

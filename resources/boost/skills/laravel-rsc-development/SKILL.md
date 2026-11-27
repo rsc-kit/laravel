@@ -197,8 +197,11 @@ const orders = await rpc<Order[]>('Orders.recent', 5)
   (rsc-kit/laravel 0.28): `register(RegisterRequest $request, RegisterUser
   $register)` is called with the form alone, and `#[CurrentUser] User $user`
   is the visitor, a guest answered 401 unless it is nullable. Only a required
-  class is injected. A model, an enum, a date or a data object never is: take
-  an id and find it, under the method's own authorization.
+  class is injected. An enum, a date or a data object never is. In a read, a
+  model never is either: take an id and find it, under the method's own
+  authorization. In an action (0.30), `publish(Post $post)` is the `{post}` of
+  the page the form was posted from, bound as a route binds it, after `auth`
+  and before `can` - never an id the call sends; from no page it is a 404.
 - `logout(Request $request)` works as in a controller (0.29): the
   `Illuminate\Http\Request` is the call's, its input the form's fields (none
   from a button), with the visitor's session, user and IP. Not validated; take
@@ -349,7 +352,34 @@ which is no attribute - fails `rsc:host-manifest` and the call, and names itself
 | `abort(404)` in a read | the app's `not-found.tsx`; in an action, the message as `formError` |
 | a middleware `abort(429, 'Slow down')` | its own status; an action shows the message as `formError` |
 | `Rsc::refuse('Still in use', ['blockers' => $links])` | the message as `formError`; the data as `result.refusal` only in an action built on `createActionClient()` with `.refusal(schema)`, 409 |
-| `RscRedirectException` | a redirect the browser follows |
+| `HttpResponseException` | its response, as if returned: a redirect the browser follows |
+| `back()->withErrors([...])` from an action | 422, each message under its field, as a `ValidationException` |
+
+An action answers as a controller does (0.31). Return `redirect()`,
+`to_route()` or `back()` and the browser follows it; `back()` is the page the
+form was posted from, and `<Form>` and `useAction` count it as the save
+succeeding: `onSuccess` runs and `resetOnSuccess` resets. A `Responsable`, such
+as Fortify's `LoginResponse`, is asked what it is, and a `JsonResponse` is its
+data, so a Fortify controller can be called and its answer returned:
+
+```php
+public function store(LoginRequest $request, AuthenticatedSessionController $fortify): Responsable
+{
+    return $fortify->store($request);
+}
+```
+
+From code deeper than the method, throw Laravel's `HttpResponseException`. Any
+other response fails loudly. There is no `RscRedirectException` (removed in
+0.31): return the redirect.
+
+An action's guards run against the page its form was posted from (0.30), so
+`signed` checks the link the visitor followed, and the request the method takes
+carries the page's route params - `EmailVerificationRequest` reads
+`route('id')` as on Laravel's own route. When the method takes a `Request`,
+the guards' request also carries the form's fields (0.31.1), so a limiter keyed
+on an input counts per input: Fortify's `throttle:login`, keyed on the email,
+is one bucket per email, not one for everyone.
 
 Whatever the backend turns a call down with reaches an action as its message:
 `abort(429, 'Slow down')`, a 403, a 404, `Rsc::refuse()` with or without data.
@@ -457,9 +487,17 @@ Laravel asks for a few routes by a fixed name, and a page in a folder never has
 it. Tell Laravel the page's name instead: `'verified:merchant.verify-email'` and
 `'password.confirm:merchant.confirm-password'` in `middleware.ts`,
 `redirectGuestsTo()` for `login`, `redirectUsersTo()` for where `guest` sends
-someone signed in, `ResetPassword::createUrlUsing()` for the reset email's link.
-The verification email's link is not a page: define `verification.verify` in
-`routes/web.php`, under a path in `backendPaths`, or sending the email throws.
+someone signed in. Or let the page declare the name Laravel asks for (0.30):
+
+```tsx
+// resources/js/app/email/verify/[id]/[hash]/page.tsx
+export const name = 'verification.verify'
+```
+
+The page is registered under that name wherever its folder is, so the
+verification email and the reset email (`password.reset`) link to the page with
+no `routes/web.php` route and no `createUrlUsing()`. A name the app gives a
+route at another url fails at boot.
 
 When login lives on the main site instead (a `merchant.` subdomain signing in
 there), give the full url:
@@ -545,13 +583,15 @@ import * as orders from '../../server-actions/orders'
   `Rsc::revalidate('all')` before the redirect, so the destination comes back
   whole, layouts included (`revalidate('all') before` the `redirect()` in a
   JS action). Without it the page is new and the sidebar stale until a reload.
-- A call to a generated stub that was redirected (an `RscRedirectException`,
+- A call to a generated stub that was redirected (a returned `redirect()`,
   or a guard sending an expired session to `/login`) resolves with
   `{ redirected }`, not the method's return value; the stub is typed
   `Promise<T | Redirected>`. Narrow with `isRedirected` from
   `@rsc-kit/core/errors` before reading the value, and before any success toast
   after an `await` of a void stub. `<Form>` and `useAction` already skip
-  `onSuccess` for it. `tsc` does not see a redirect read as text
+  `onSuccess` for it - except a redirect back to the page the action was
+  called from (`back()`, Fortify's 2FA enable), which is the save succeeding:
+  `onSuccess` runs and `resetOnSuccess` resets (core 0.45). `tsc` does not see a redirect read as text
   (`` `/t/${id}` `` goes to `/t/[object Object]`): the project's oxlint runs
   `typescript/restrict-template-expressions`, `no-base-to-string` and
   `restrict-plus-operands` with `--type-aware`.
@@ -560,15 +600,16 @@ import * as orders from '../../server-actions/orders'
   on the page's response. Redirect after it as usual. A callable read inside
   a page cannot - its response headers have gone - so cookies are set from
   actions.
-- A message for the next page ("Invoice sent." after a redirect): call
-  `Rsc::flash('Invoice sent.')` in the action - or `Rsc::flash('Declined.',
-  'error')`; the kinds are success, error, info and warning - and render one
-  client component in the root layout that calls
-  `useFlash(({ message, kind }) => toast(message))` from
-  `@rsc-kit/core/useFlash`. It shows once, and not again on reload. It is a
-  cookie, so from an action or a controller, never a callable a page reads.
-  The browser reads it, so the package leaves it unencrypted: nothing secret
-  goes in a flash.
+- A message for the next page ("Profile updated." after a save): flash it as
+  on any Laravel route, `return back()->with('status', 'Profile updated.')`.
+  The flash lasts the whole render the redirect leads to (0.31), so every read
+  in it finds it, and a reload does not show it again. Read it in the page with
+  an rpc - `public function status(): ?string { return session('status'); }`
+  - in its own `<Suspense>` slot, as any read of the visitor. A toast fired
+  from an effect fires again when the router shows a page it kept, so remember
+  the messages already shown. There is no `Rsc::flash` (removed in 0.31), and
+  `useFlash` from `@rsc-kit/core/useFlash` shows only what a JavaScript
+  action's `flash()` leaves; Laravel's flash never reaches it.
 - A change that did not come from the tab - a webhook, a job, another user -
   is `Rsc::changed()`, below.
 
@@ -750,7 +791,9 @@ export function NewOrder() {
   a honeypot only stops the crudest bots.
 - From a button rather than a form, use `useAction` from
   `@rsc-kit/core/useAction`: `execute`, `isPending`, `onSuccess`, `onError`
-  and an `optimistic` option.
+  and an `optimistic` option. It takes a generated stub as it is (core 0.45),
+  and `onSuccess` gets what the PHP method returned:
+  `useAction(verification.send)`, with `{ onSuccess }` as its second argument.
 - No CSRF token, no `@csrf`, no `csrf_token()` in an `rpc()` call. A form, an
   action and Laravel 13 itself accept a same-origin post by the browser's
   `Sec-Fetch-Site` header. A `POST`, `PUT`, `PATCH` or `DELETE` to a

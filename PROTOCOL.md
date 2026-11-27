@@ -58,7 +58,7 @@ message to tell an invalid form from a broken server
 | the input is invalid | `ValidationException` | 422 | `validationErrors: { "email": ["…"] }`, `error` |
 | no session | `AuthenticationException` | 401 | `unauthenticated: true`, `error` |
 | a session, and still no | `AuthorizationException` | 403 | `unauthorized: true`, `error` |
-| go somewhere else | `RscRedirectException` | **200** | `redirect: "/login"`, `redirectStatus` |
+| go somewhere else | a returned `redirect()`, or `HttpResponseException` | **200** | `redirect: "/login"`, `redirectStatus` |
 | a middleware aborted | `HttpException` (`abort(429, 'Slow down')`) | that status | `error`, `refusalStatus: 429` |
 | refused on purpose | `Rsc::refuse('Still in use', $data)` | 409 unless given | `error`, `refusalStatus`, `refusalData` |
 | the function failed | anything else | 500 | `error`, and under `app.debug` `debug` |
