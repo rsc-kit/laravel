@@ -29,6 +29,7 @@ use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
 use RscKit\Build\WatchedAttributes;
+use RscKit\Build\WatchedSession;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\Injected;
@@ -243,7 +244,13 @@ class CallableRegistry
     {
         $session = $response->getSession();
 
-        if ($session === null || ! in_array('errors', $session->get('_flash.new', []), true)) {
+        // A build's session is nobody's, and looking would say the call
+        // needs a visitor. Flashing errors there would have said so already.
+        if ($session === null || $session instanceof WatchedSession) {
+            return null;
+        }
+
+        if (! in_array('errors', $session->get('_flash.new', []), true)) {
             return null;
         }
 
