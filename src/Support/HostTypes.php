@@ -424,6 +424,20 @@ class HostTypes
                 $required[] = $field;
             }
 
+            // confirmed asks for a second field beside this one, the same
+            // type, and is refused without it: password_confirmation, or
+            // whatever confirmed:repeat_password names.
+            foreach ($list as $r) {
+                if (strtolower(explode(':', $r)[0]) === 'confirmed') {
+                    $confirmation = str_contains($r, ':') ? substr($r, strpos($r, ':') + 1) : $field.'_confirmation';
+                    $properties[$confirmation] = $type;
+
+                    if (in_array('required', $names, true)) {
+                        $required[] = $confirmation;
+                    }
+                }
+            }
+
             foreach ($list as $r) {
                 if (str_starts_with(strtolower($r), 'required_if:')) {
                     $conditions[$field] = str_getcsv(substr($r, 12), escape: '');
