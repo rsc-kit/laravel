@@ -2,6 +2,7 @@
 
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Routing\Pipeline;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Route;
@@ -51,6 +52,7 @@ beforeEach(function () {
     $registry->register('Answer.renderedAuth', fn () => (new Pipeline(app()))->send(request())
         ->through([fn () => throw new AuthenticationException])
         ->then(fn () => new SignsIn));
+    $registry->register('Answer.thrown', fn () => throw new HttpResponseException(redirect('/dashboard')));
     $registry->register('Answer.view', fn () => response('<p>a page</p>'));
 });
 
@@ -106,4 +108,8 @@ it('answers an exception rendered into a response as the exception it was', func
         ->assertJsonPath('validationErrors.email.0', 'These credentials do not match our records.');
 
     answerFrom('Answer.renderedAuth')->assertStatus(401)->assertJson(['unauthenticated' => true]);
+});
+
+it('answers an HttpResponseException with its response', function () {
+    answerFrom('Answer.thrown')->assertOk()->assertJson(['redirect' => '/dashboard']);
 });

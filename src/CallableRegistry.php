@@ -9,6 +9,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
@@ -162,7 +163,15 @@ class CallableRegistry
         $this->page = (new RouteMiddleware($this->container))->requestFor($this->postedFrom(), self::uses($callable));
 
         try {
-            return $this->answer($name, $this->run($callable, $name, $args, $validate));
+            try {
+                $result = $this->run($callable, $name, $args, $validate);
+            } catch (HttpResponseException $e) {
+                // Laravel's way to end a request from deep inside it: the
+                // response is the answer, as if the callable had returned it.
+                $result = $e->getResponse();
+            }
+
+            return $this->answer($name, $result);
         } finally {
             $this->page = $previous;
         }

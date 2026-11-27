@@ -124,13 +124,13 @@ fields, and it carries the visitor's session, user and address. It is not
 validated - take a `FormRequest` for that.
 
 ```php
-public function logout(Request $request): never
+public function logout(Request $request): RedirectResponse
 {
     Auth::logout();
     $request->session()->invalidate();
     $request->session()->regenerateToken();
 
-    throw new RscRedirectException(route('home'));
+    return to_route('home');
 }
 ```
 
@@ -220,6 +220,19 @@ policy on one order is `Gate::authorize('cancel', $order)` in the method. A
 guard PHP cannot make, usually a forgotten or wrong `use`, fails
 `rsc:host-manifest` and the call, rather than being ignored.
 
+A callable may answer as a controller does. `redirect()`, `to_route()` and
+`back()` are performed - `back()` is the page the form was posted from - and a
+`Responsable` such as Fortify's `LoginResponse` is asked what it is. A
+`JsonResponse` is its data. Any other response fails loudly: a page renders the
+rest.
+
+```php
+public function store(LoginRequest $request, AuthenticatedSessionController $fortify): Responsable
+{
+    return $fortify->store($request);
+}
+```
+
 What is thrown reaches the render as itself rather than as a broken page:
 
 | thrown in PHP | the render gets |
@@ -230,7 +243,7 @@ What is thrown reaches the render as itself rather than as a broken page:
 | `abort(404)` | the app's `not-found.tsx`, a real 404 |
 | a middleware `abort(429, 'Slow down')` | its own status — throttle's 429 stays a 429 |
 | `Rsc::refuse('Still in use', ['blockers' => $links])` | the message and the data, 409 by default |
-| `RscRedirectException` | a redirect the browser performs |
+| `HttpResponseException` | its response, as if returned |
 
 An action shows an `abort()`'s message to the visitor as it is written, so give
 it one: `abort(429, 'Slow down')`. Without one the form says "Refused.". Only a
