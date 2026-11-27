@@ -46,6 +46,9 @@ class HostCallDispatcher
     /** The page an action was posted from, as JSON: {url, params}. */
     public const PAGE_HEADER = 'X-Rsc-Page';
 
+    /** The render a call was made for: one id on every call of a page's request, none on an action's. */
+    public const RENDER_HEADER = 'X-Rsc-Render';
+
     /** Where the page an action was posted from is kept on the call's request. */
     public const PAGE_ATTRIBUTE = 'rsc.page';
 

@@ -17,6 +17,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class HostCallController
 {
+    /** Where the flash a render was handed is kept for its later calls. */
+    private const KEPT_FLASH = '_rsc_render_flash';
+
     public function __construct(private HostCallDispatcher $dispatcher) {}
 
     public function __invoke(Request $request): JsonResponse|StreamedResponse
@@ -28,6 +31,7 @@ class HostCallController
         self::believeClientIp($request);
         self::believeClientUserAgent($request);
         self::notePage($request);
+        self::keepFlashForRender($request);
 
         // Decoded here rather than through $request->json(), which throws on
         // malformed input and would surface as a 500 — a caller sending
@@ -151,6 +155,47 @@ class HostCallController
      * form's own post: what back() and url()->previous() read, so an action
      * that answers back() returns the visitor to the page they were on.
      */
+    /**
+     * Hand every call of one render what was flashed for it.
+     *
+     * A flash lasts one request, and a render is several: the route's guards,
+     * then each read. The first spent it, and the read that showed it found
+     * nothing - Fortify's "We have emailed your password reset link" never
+     * reached the page. So the first call of a render keeps what it was
+     * handed, under the render's id, and every later call carrying that id is
+     * handed it again for its own request alone. The next render's id finds
+     * the keep is not its own and starts over, from what was flashed since.
+     */
+    private static function keepFlashForRender(Request $request): void
+    {
+        $render = $request->header(HostCallDispatcher::RENDER_HEADER);
+
+        if (! is_string($render) || $render === '' || ! $request->hasSession()) {
+            return;
+        }
+
+        $session = $request->session();
+        $kept = $session->get(self::KEPT_FLASH);
+
+        if (is_array($kept) && ($kept['render'] ?? null) === $render && is_array($kept['flash'] ?? null)) {
+            foreach ($kept['flash'] as $key => $value) {
+                $session->now($key, $value);
+            }
+
+            return;
+        }
+
+        $flash = [];
+
+        foreach ((array) $session->get('_flash.old', []) as $key) {
+            if (is_string($key) && $session->has($key)) {
+                $flash[$key] = $session->get($key);
+            }
+        }
+
+        $session->put(self::KEPT_FLASH, ['render' => $render, 'flash' => $flash]);
+    }
+
     public static function notePage(Request $request): void
     {
         $page = json_decode((string) $request->header(HostCallDispatcher::PAGE_HEADER, ''), true);
