@@ -59,6 +59,12 @@ class HostCallController
             return new StreamedResponse(function () use ($calls, $request) {
                 self::drainOutputBuffers();
 
+                // That save aged the flash too, and took with it what the
+                // render's id handed this request: the page's reads arrive as
+                // a batch, and "Profile updated." was gone before the one that
+                // shows it ran. Handed again, now that nothing saves first.
+                self::keepFlashForRender($request);
+
                 try {
                     foreach ($this->dispatcher->batch($calls) as $line) {
                         echo $line, "\n";

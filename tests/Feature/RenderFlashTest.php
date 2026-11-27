@@ -84,6 +84,48 @@ it('hands the next render what a route flashed in between', function () {
     callForRender('Shared.status', 'render-3')->assertJson(['result' => null]);
 });
 
+/**
+ * The page's reads arrive as one batch, and a batch is streamed: StartSession
+ * saved the session - ageing the flash - when the response left it, before
+ * the first call ran. What the render's id re-flashed for this request was
+ * gone by then, and the starter kit's "Profile updated." never showed.
+ */
+function batchForRender(array $functions, string $render): array
+{
+    $server = [
+        'CONTENT_TYPE' => 'application/json',
+        'HTTP_'.str_replace('-', '_', strtoupper(HostCallDispatcher::SECRET_HEADER)) => 'flash-secret',
+        'HTTP_'.str_replace('-', '_', strtoupper(HostCallDispatcher::RENDER_HEADER)) => $render,
+    ];
+
+    $calls = array_map(fn (string $function) => ['function' => $function, 'args' => []], $functions);
+
+    $body = test()
+        ->withCookie(config('session.cookie'), RENDER_FLASH_SESSION)
+        ->call('POST', '/__rsc/host-call', [], [], [], $server, json_encode(['calls' => $calls]))
+        ->streamedContent();
+
+    return array_map(fn (string $line) => json_decode($line, true)['result'] ?? null, array_filter(explode("\n", $body)));
+}
+
+it('hands a batch of the render what the guards before it were handed', function () {
+    callForRender('Password.email', null)->assertOk();
+
+    // The route's guards, one call; then the page's reads, one batch.
+    callForRender('Shared.status', 'render-1')->assertJson(['result' => 'We have emailed your password reset link.']);
+
+    expect(batchForRender(['Shared.status', 'Shared.status'], 'render-1'))
+        ->toBe(['We have emailed your password reset link.', 'We have emailed your password reset link.']);
+});
+
+it('hands a batch that opens the render what was flashed for it', function () {
+    callForRender('Password.email', null)->assertOk();
+
+    expect(batchForRender(['Shared.status'], 'render-1'))->toBe(['We have emailed your password reset link.']);
+    callForRender('Shared.status', 'render-1')->assertJson(['result' => 'We have emailed your password reset link.']);
+    callForRender('Shared.status', 'render-2')->assertJson(['result' => null]);
+});
+
 it('leaves a call without a render to Laravel, a flash for the one request after', function () {
     callForRender('Password.email', null)->assertOk();
 
