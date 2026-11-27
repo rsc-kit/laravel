@@ -53,6 +53,7 @@ beforeEach(function () {
         ->through([fn () => throw new AuthenticationException])
         ->then(fn () => new SignsIn));
     $registry->register('Answer.thrown', fn () => throw new HttpResponseException(redirect('/dashboard')));
+    $registry->register('Answer.withErrors', fn () => back()->withInput(['email' => 'who@example.com'])->withErrors(['email' => "We can't find a user with that email address."]));
     $registry->register('Answer.view', fn () => response('<p>a page</p>'));
 });
 
@@ -112,4 +113,13 @@ it('answers an exception rendered into a response as the exception it was', func
 
 it('answers an HttpResponseException with its response', function () {
     answerFrom('Answer.thrown')->assertOk()->assertJson(['redirect' => '/dashboard']);
+});
+
+it('answers back()->withErrors() as the invalid form it says it was', function () {
+    answerFrom('Answer.withErrors', ['url' => 'http://localhost/forgot-password', 'params' => []])
+        ->assertStatus(422)
+        ->assertJsonPath('validationErrors.email.0', "We can't find a user with that email address.");
+
+    expect(session()->has('errors'))->toBeFalse()
+        ->and(session()->has('_old_input'))->toBeFalse();
 });

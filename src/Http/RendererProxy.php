@@ -3,6 +3,8 @@
 namespace RscKit\Http;
 
 use Illuminate\Http\Request;
+use Illuminate\Session\NullSessionHandler;
+use Illuminate\Session\Store;
 use RscKit\ProxyWouldDeadlockException;
 use RscKit\RendererNotRunningException;
 
@@ -72,6 +74,39 @@ class RendererProxy
         'x-forwarded-proto', 'x-forwarded-port', 'x-forwarded-prefix',
     ];
 
+    /**
+     * Keep this request from saving the visitor's session over the render's.
+     *
+     * The session here was read before the render began, and the web group
+     * saves it once the renderer's head arrives - after the route's guards,
+     * an action, any call that wrote to it. Saved, that stale copy undid
+     * them: the flash an action left was spent before the page read it, and
+     * the url `auth` meant to send a guest back to was forgotten. What the
+     * render does to the session, its host calls save.
+     *
+     * A session not stored yet is still saved: nothing has written to it
+     * that this could undo, and its token is the one the XSRF-TOKEN cookie
+     * on this response carries.
+     */
+    private static function leaveSessionToHostCalls(Request $request): void
+    {
+        if (! $request->hasSession()) {
+            return;
+        }
+
+        $session = $request->session();
+
+        if (! $session instanceof Store || $request->cookies->get($session->getName()) !== $session->getId()) {
+            return;
+        }
+
+        if (! $session->getHandler()->read($session->getId())) {
+            return;
+        }
+
+        $session->setHandler(new NullSessionHandler);
+    }
+
     public function __invoke(Request $request): RendererResponse
     {
         // Already been to the renderer, which did not own it either. Answering
@@ -80,6 +115,8 @@ class RendererProxy
         if ($request->headers->has(self::FALLBACK_HEADER)) {
             abort(404);
         }
+
+        self::leaveSessionToHostCalls($request);
 
         $renderer = $this->rendererUrl();
 

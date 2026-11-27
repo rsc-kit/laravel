@@ -39,6 +39,26 @@ namespace Tests\Feature\HostTypesFixtures {
         }
     }
 
+    class ChangePassword extends FormRequest
+    {
+        public function rules(): array
+        {
+            return [
+                'password' => ['required', 'string', 'confirmed'],
+                'pin' => 'string|confirmed:pin_again',
+            ];
+        }
+    }
+
+    /** Kept for its methods, as the starter kit's TwoFactorAuthenticationRequest is. */
+    class ShowSettings extends FormRequest
+    {
+        public function rules(): array
+        {
+            return [];
+        }
+    }
+
     class SendContact extends FormRequest
     {
         public function rules(): array
@@ -103,7 +123,10 @@ namespace {
     use Illuminate\Pagination\LengthAwarePaginator;
     use Illuminate\Support\Facades\Artisan;
     use RscKit\Support\HostTypes;
+    use Tests\Feature\HostTypesFixtures\ChangePassword;
     use Tests\Feature\HostTypesFixtures\Orders;
+    use Tests\Feature\HostTypesFixtures\ShowSettings;
+    use Tests\Feature\HostTypesFixtures\StoreOrder;
 
     function describeOrders(): array
     {
@@ -117,6 +140,9 @@ namespace {
             'Orders.update' => [Orders::class, 'update'],
             'Orders.untyped' => [Orders::class, 'untyped'],
             'Inline.add' => fn (int $a, int $b): int => $a + $b,
+            'Settings.show' => fn (ShowSettings $request): array => [],
+            'Settings.required' => fn (StoreOrder $request): array => [],
+            'Settings.password' => fn (ChangePassword $request): array => [],
             'Pages.byCursor' => fn (): CursorPaginator => throw new LogicException,
             'Pages.counted' => fn (): LengthAwarePaginator => throw new LogicException,
         ])), true);
@@ -133,6 +159,22 @@ namespace {
         expect($types['Orders.find']['optional'])->toBe(1)
             ->and($types['Orders.tag']['rest'])->toBe(['type' => 'string'])
             ->and($types['Orders.tag']['params'])->toBe([['type' => 'string']]);
+    });
+
+    it('asks for no argument when the FormRequest requires no field, and for one when it does', function () {
+        $types = describeOrders()['types'];
+
+        expect($types['Settings.show']['optional'])->toBe(1)
+            ->and($types['Settings.required'])->not->toHaveKey('optional')
+            ->and($types['Orders.update'])->not->toHaveKey('optional');
+    });
+
+    it('asks for the field confirmed compares against, by its own name or the one it is given', function () {
+        $form = describeOrders()['types']['Settings.password']['params'][0];
+
+        expect(array_keys($form['properties']))->toBe(['password', 'password_confirmation', 'pin', 'pin_again'])
+            ->and($form['properties']['password_confirmation'])->toBe(['type' => 'string'])
+            ->and($form['required'])->toBe(['password', 'password_confirmation']);
     });
 
     it('types a page as it encodes: next_cursor by cursor, total when counted', function () {

@@ -11,6 +11,7 @@ use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Routing\Attributes\Controllers\WithoutMiddleware;
@@ -18,6 +19,8 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Redirector;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
+use Illuminate\Support\ViewErrorBag;
+use Illuminate\Validation\ValidationException;
 use LogicException;
 use ReflectionAttribute;
 use ReflectionClass;
@@ -26,6 +29,7 @@ use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
 use RscKit\Build\WatchedAttributes;
+use RscKit\Build\WatchedSession;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\Injected;
@@ -186,7 +190,7 @@ class CallableRegistry
      * first. Left alone, a RedirectResponse was serialised as an object of
      * headers and the visitor stayed where they were, with nothing said.
      *
-     * @throws RscRedirectException
+     * @throws HttpResponseException a redirect
      */
     private function answer(string $name, mixed $result): mixed
     {
@@ -207,8 +211,16 @@ class CallableRegistry
             throw $result->exception;
         }
 
+        // back()->withErrors() is Laravel's other way to say a form was
+        // invalid, and Fortify's password reset says it so. The errors are
+        // the answer - a 422 under their fields - and the flash is taken
+        // back, or they would turn up on whatever page came next.
+        if ($result instanceof RedirectResponse && ($errors = $this->flashedErrors($result)) !== null) {
+            throw ValidationException::withMessages($errors);
+        }
+
         if ($result->isRedirect() && $result->headers->has('Location')) {
-            throw new RscRedirectException((string) $result->headers->get('Location'), $result->getStatusCode());
+            throw new HttpResponseException($result);
         }
 
         if ($result instanceof JsonResponse) {
@@ -220,6 +232,38 @@ class CallableRegistry
             $name,
             $result::class,
         ));
+    }
+
+    /**
+     * The errors a redirect flashed during this call, taken out of the
+     * session with the input flashed beside them; null when it flashed none.
+     *
+     * @return array<string, list<string>>|null
+     */
+    private function flashedErrors(RedirectResponse $response): ?array
+    {
+        $session = $response->getSession();
+
+        // A build's session is nobody's, and looking would say the call
+        // needs a visitor. Flashing errors there would have said so already.
+        if ($session === null || $session instanceof WatchedSession) {
+            return null;
+        }
+
+        if (! in_array('errors', $session->get('_flash.new', []), true)) {
+            return null;
+        }
+
+        $bag = $session->get('errors');
+
+        if (! $bag instanceof ViewErrorBag || $bag->getBag('default')->isEmpty()) {
+            return null;
+        }
+
+        $session->forget(['errors', '_old_input']);
+        $session->put('_flash.new', array_values(array_diff($session->get('_flash.new', []), ['errors', '_old_input'])));
+
+        return $bag->getBag('default')->getMessages();
     }
 
     /**

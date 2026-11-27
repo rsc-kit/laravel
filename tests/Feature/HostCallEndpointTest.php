@@ -10,7 +10,6 @@ use RscKit\CallableRegistry;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Revalidation;
 use RscKit\Rsc;
-use RscKit\RscRedirectException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
@@ -189,7 +188,7 @@ describe('what a failure means', function () {
             'a' => fn () => throw ValidationException::withMessages(['name' => ['Required.']]),
             'b' => fn () => throw new AuthenticationException,
             'c' => fn () => throw new AuthorizationException,
-            'd' => fn () => throw new RscRedirectException('/login'),
+            'd' => fn () => redirect('/login'),
             'e' => fn () => abort(429),
         ]);
 
@@ -290,7 +289,7 @@ describe('what a failure means', function () {
         // would send the host call itself to the destination and hand whatever
         // came back to the renderer as if it were the function's result.
         $dispatcher = dispatcherWith([
-            'Session.start' => fn () => throw new RscRedirectException('/login'),
+            'Session.start' => fn () => redirect('/login'),
         ]);
 
         $answer = $dispatcher->dispatch(['function' => 'Session.start', 'args' => []]);
@@ -304,7 +303,7 @@ describe('what a failure means', function () {
         // A 307 replays a POST at the destination. A middleware that
         // redirected with a 302 or a 303 meant the browser to arrive with a GET.
         $dispatcher = dispatcherWith([
-            'Session.start' => fn () => throw new RscRedirectException('/login', 303),
+            'Session.start' => fn () => redirect('/login', 303),
         ]);
 
         $answer = $dispatcher->dispatch(['function' => 'Session.start', 'args' => []]);
@@ -317,8 +316,8 @@ describe('what a failure means', function () {
         // renderer's host call, at whatever address the renderer reaches
         // Laravel by - not one the visitor can open.
         $dispatcher = dispatcherWith([
-            'Session.start' => fn () => throw new RscRedirectException(request()->getSchemeAndHttpHost().'/login?next=%2Fbilling#top'),
-            'Session.sso' => fn () => throw new RscRedirectException('https://id.example.com/authorize?client=1'),
+            'Session.start' => fn () => redirect('/login?next=%2Fbilling#top'),
+            'Session.sso' => fn () => redirect()->away('https://id.example.com/authorize?client=1'),
         ]);
 
         expect($dispatcher->dispatch(['function' => 'Session.start', 'args' => []])['reply']['redirect'])->toBe('/login?next=%2Fbilling#top')
@@ -339,6 +338,33 @@ describe('revalidation', function () {
         $answer = $dispatcher->dispatch(['function' => 'Orders.create', 'args' => []]);
 
         expect($answer['reply']['revalidate'])->toBe(['orders']);
+    });
+
+    it('carries what an action marked stale before it redirected', function () {
+        // The starter kit's profile form: Rsc::revalidate('all') so the
+        // sidebar shows the new name, then to_route(). The redirect answered
+        // without the marks, and the sidebar kept the old name.
+        $dispatcher = dispatcherWith([
+            'Profile.update' => function () {
+                app(Revalidation::class)->mark('all');
+
+                return redirect('/settings/profile');
+            },
+        ]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Profile.update', 'args' => []]);
+
+        expect($answer['status'])->toBe(200)
+            ->and($answer['reply']['redirect'])->toBe('/settings/profile')
+            ->and($answer['reply']['revalidate'])->toBe(['all']);
+    });
+
+    it('omits the key from a redirect that marked nothing', function () {
+        $dispatcher = dispatcherWith(['Session.store' => fn () => redirect('/dashboard')]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Session.store', 'args' => []]);
+
+        expect($answer['reply'])->not->toHaveKey('revalidate');
     });
 
     it('omits the key when nothing was marked', function () {

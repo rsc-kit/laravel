@@ -122,10 +122,6 @@ class RscKitServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // useFlash() reads the message in the browser, which cannot read a
-        // cookie Laravel encrypted.
-        EncryptCookies::except(Rsc::FLASH_COOKIE);
-
         $this->registerHostCallEndpoint();
         $this->registerRendererFallback();
 

@@ -7,12 +7,12 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\ValidationException;
 use JsonException;
 use JsonSerializable;
 use RscKit\CallableRegistry;
 use RscKit\Revalidation;
-use RscKit\RscRedirectException;
 use RscKit\RscRefusalException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -45,6 +45,9 @@ class HostCallDispatcher
 
     /** The page an action was posted from, as JSON: {url, params}. */
     public const PAGE_HEADER = 'X-Rsc-Page';
+
+    /** The render a call was made for: one id on every call of a page's request, none on an action's. */
+    public const RENDER_HEADER = 'X-Rsc-Render';
 
     /** Where the page an action was posted from is kept on the call's request. */
     public const PAGE_ATTRIBUTE = 'rsc.page';
@@ -174,7 +177,16 @@ class HostCallDispatcher
                 'status' => 403,
                 'reply' => ['unauthorized' => true, 'error' => $e->getMessage()],
             ];
-        } catch (RscRedirectException $e) {
+        } catch (HttpResponseException $e) {
+            // Only a redirect gets here: a guard's, or one a callable returned
+            // or threw - CallableRegistry::answer() takes any other response
+            // apart first. Anything else is a failure.
+            $response = $e->getResponse();
+
+            if (! $response->isRedirect() || ! $response->headers->has('Location')) {
+                return $this->failure($e);
+            }
+
             // Answered 200 with the destination in the body, never as a 3xx.
             // An HTTP client follows a redirect transparently, so a real one
             // here would send this call to the destination and hand whatever
@@ -184,10 +196,20 @@ class HostCallDispatcher
             // meant a 302, and the engine's default is a 307, which replays a
             // POST at the destination. Its headers do not - the reply has no
             // field for them.
-            return [
-                'status' => 200,
-                'reply' => ['redirect' => $this->forTheVisitor($e->getLocation()), 'redirectStatus' => $e->getStatus()],
-            ];
+            $reply = ['redirect' => $this->forTheVisitor((string) $response->headers->get('Location')), 'redirectStatus' => $response->getStatusCode()];
+
+            // What it marked stale before redirecting goes with it, as with a
+            // result: Rsc::revalidate('all') then to_route() is how an action
+            // that changed the layout's data says so, and dropped here the
+            // layout kept what it showed. Taken now - the finally below runs
+            // after this return is built.
+            $marked = $this->revalidation->flush();
+
+            if ($marked !== []) {
+                $reply['revalidate'] = $marked;
+            }
+
+            return ['status' => 200, 'reply' => $reply];
         } catch (RscRefusalException $e) {
             // Rsc::refuse(): an answer, never reported, with its data beside
             // the message. Without data it is the refusal it always was.

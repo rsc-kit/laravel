@@ -18,7 +18,6 @@ use RscKit\Build\BuildCalls;
 use RscKit\CallableRegistry;
 use RscKit\Console\RscHostManifestCommand;
 use RscKit\Rsc;
-use RscKit\RscRedirectException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Fixtures\BuildForm;
@@ -74,7 +73,7 @@ describe('answered', function () {
     it('keeps the outcomes apart, as the endpoint does', function () {
         expect(ask(fn () => abort(404)))->toMatchArray(['status' => 404, 'refusalStatus' => 404]);
         expect(ask(fn () => Rsc::refuse('No.', ['a' => 1])))->toMatchArray(['status' => 409, 'refusalData' => ['a' => 1]]);
-        expect(ask(fn () => throw new RscRedirectException('/new')))->toMatchArray(['status' => 200, 'redirect' => '/new']);
+        expect(ask(fn () => redirect('/new')))->toMatchArray(['status' => 200, 'redirect' => '/new']);
         expect(ask(fn () => throw ValidationException::withMessages(['name' => 'No.'])))->toMatchArray(['status' => 422, 'validationErrors' => ['name' => ['No.']]]);
     });
 
@@ -156,10 +155,6 @@ describe('needs a visitor', function () {
         'an error on a missing user' => [fn () => auth()->user()->orders()],
         'a caught error on one' => [fn () => rescue(fn () => auth()->user()->orders(), [], false)],
         'the previous url' => [fn () => URL::previous()],
-        'Rsc::flash' => [function () {
-            Rsc::flash('Saved.');
-            session('x');
-        }],
     ]);
 
     it('notices a token guard, which reads a header', function () {

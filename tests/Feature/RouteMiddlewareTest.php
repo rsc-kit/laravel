@@ -5,13 +5,13 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Foundation\Auth\User;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use RscKit\CallableRegistry;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Revalidation;
 use RscKit\RouteMiddleware;
-use RscKit\RscRedirectException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\Routing\Exception\RouteNotFoundException;
 
@@ -104,7 +104,7 @@ it('sends the visitor where an answering middleware redirects them', function ()
     app('router')->aliasMiddleware('answers-redirect', fn () => redirect('/email/verify'));
 
     expect(fn () => runner()->run(['answers-redirect']))
-        ->toThrow(fn (RscRedirectException $e) => expect($e->getLocation())->toEndWith('/email/verify'));
+        ->toThrow(fn (HttpResponseException $e) => expect($e->getResponse()->headers->get('Location'))->toEndWith('/email/verify'));
 });
 
 it('refuses an unverified user through Laravel\'s own verified middleware', function () {
@@ -120,7 +120,7 @@ it('refuses an unverified user through Laravel\'s own verified middleware', func
     app('request')->setUserResolver(fn () => $user);
 
     expect(fn () => runner()->run([EnsureEmailIsVerified::class]))
-        ->toThrow(RscRedirectException::class);
+        ->toThrow(fn (HttpResponseException $e) => expect($e->getResponse()->isRedirect())->toBeTrue());
 });
 
 it('refuses a middleware that answers with a success of its own', function () {
@@ -142,7 +142,7 @@ it('sends an unauthenticated visitor to the login route', function () {
     });
 
     expect(fn () => runner()->run(['needs-auth']))
-        ->toThrow(RscRedirectException::class);
+        ->toThrow(fn (HttpResponseException $e) => expect($e->getResponse()->isRedirect())->toBeTrue());
 });
 
 it('lets the exception stand when there is nowhere to send them', function () {
