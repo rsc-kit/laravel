@@ -7,7 +7,9 @@ use Error;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Support\Responsable;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Routing\Attributes\Controllers\WithoutMiddleware;
@@ -28,8 +30,10 @@ use RscKit\Support\ActionManifest;
 use RscKit\Support\Injected;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\InputBag;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\Routing\Exception\RouteNotFoundException;
+use Throwable;
 
 class CallableRegistry
 {
@@ -158,10 +162,55 @@ class CallableRegistry
         $this->page = (new RouteMiddleware($this->container))->requestFor($this->postedFrom(), self::uses($callable));
 
         try {
-            return $this->run($callable, $name, $args, $validate);
+            return $this->answer($name, $this->run($callable, $name, $args, $validate));
         } finally {
             $this->page = $previous;
         }
+    }
+
+    /**
+     * What a controller's return would have meant, for a callable that
+     * returned one.
+     *
+     * redirect(), to_route() and back() are performed as a guard's redirect
+     * is, and a Responsable - Fortify's LoginResponse - is asked what it is
+     * first. Left alone, a RedirectResponse was serialised as an object of
+     * headers and the visitor stayed where they were, with nothing said.
+     *
+     * @throws RscRedirectException
+     */
+    private function answer(string $name, mixed $result): mixed
+    {
+        if ($result instanceof Responsable) {
+            $result = $result->toResponse($this->container->make('request'));
+        }
+
+        if (! $result instanceof SymfonyResponse) {
+            return $result;
+        }
+
+        // A response an exception was rendered into is that exception. Laravel's
+        // routing pipeline catches what its pipes throw and renders it - which
+        // is how Fortify's login answers a wrong password: back(), the errors
+        // flashed. Performed, that redirect is a form that reloads in silence;
+        // rethrown, it is the 422 with its fields that it was.
+        if (isset($result->exception) && $result->exception instanceof Throwable) {
+            throw $result->exception;
+        }
+
+        if ($result->isRedirect() && $result->headers->has('Location')) {
+            throw new RscRedirectException((string) $result->headers->get('Location'), $result->getStatusCode());
+        }
+
+        if ($result instanceof JsonResponse) {
+            return $result->getData(true);
+        }
+
+        throw new LogicException(sprintf(
+            '[%s] answered with a %s. A callable returns data, or a redirect; a page renders the rest.',
+            $name,
+            $result::class,
+        ));
     }
 
     /**

@@ -146,6 +146,10 @@ class HostCallController
      * The renderer sends the page beside the call - believed past the secret,
      * as the address is - and CallableRegistry runs the guards against a
      * request for it. Only a url and string params; anything else is no page.
+     *
+     * It is the call's Referer too, as the browser's would have been on the
+     * form's own post: what back() and url()->previous() read, so an action
+     * that answers back() returns the visitor to the page they were on.
      */
     public static function notePage(Request $request): void
     {
@@ -162,6 +166,7 @@ class HostCallController
         );
 
         $request->attributes->set(HostCallDispatcher::PAGE_ATTRIBUTE, ['url' => $page['url'], 'params' => $params]);
+        $request->headers->set('Referer', $page['url']);
     }
 
     /**
