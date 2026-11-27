@@ -11,6 +11,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Routing\Attributes\Controllers\WithoutMiddleware;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Routing\Redirector;
 use Illuminate\Routing\Route;
 use Illuminate\Routing\Router;
@@ -21,6 +22,7 @@ use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
+use RscKit\Build\WatchedAttributes;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\Injected;
@@ -39,6 +41,9 @@ class CallableRegistry
 
     /** @var array<string, array{middleware: list<Closure|string>, without: list<string>, names: list<string>}> */
     private array $attributeCache = [];
+
+    /** The page the call running now was posted from, as a request for it - see execute(). */
+    private ?Request $page = null;
 
     public function __construct(private Container $container) {}
 
@@ -145,6 +150,42 @@ class CallableRegistry
 
         $callable = $this->callables[$name];
 
+        // The page it was posted from, as a request whose route runs this
+        // callable - see RouteMiddleware::requestFor(). One for the guards,
+        // the form and the models alike, so the post a policy was handed is
+        // the post the method is.
+        $previous = $this->page;
+        $this->page = (new RouteMiddleware($this->container))->requestFor($this->postedFrom(), self::uses($callable));
+
+        try {
+            return $this->run($callable, $name, $args, $validate);
+        } finally {
+            $this->page = $previous;
+        }
+    }
+
+    /**
+     * What a route that runs this callable says it runs.
+     *
+     * @param  array{class-string, string}|class-string|Closure  $callable
+     */
+    private static function uses(array|string|Closure $callable): string|Closure
+    {
+        return match (true) {
+            $callable instanceof Closure => $callable,
+            is_array($callable) => $callable[0].'@'.$callable[1],
+            default => $callable.'@__invoke',
+        };
+    }
+
+    /**
+     * @param  array{class-string, string}|class-string|Closure  $callable
+     *
+     * @throws AuthenticationException
+     * @throws AuthorizationException
+     */
+    private function run(array|string|Closure $callable, string $name, array $args, ?array $validate): mixed
+    {
         // Checked, not run - Laravel's Precognition. Everything up to the
         // call happens as it would: the attributes' guards, then the form
         // request's authorize() and rules, filtered to the fields named.
@@ -437,6 +478,12 @@ class CallableRegistry
      */
     private function runMiddleware(array $middleware, array $without): void
     {
+        // The page's params bound as a route's are: Laravel's own middleware,
+        // in the place its priority gives it among the guards.
+        if ($this->page !== null && $this->page->route()->parameters() !== []) {
+            $middleware[] = SubstituteBindings::class;
+        }
+
         if ($middleware === []) {
             return;
         }
@@ -447,7 +494,7 @@ class CallableRegistry
             // Against the page the action was posted from, when the renderer
             // said which: `signed` checks the link the visitor followed to
             // it, not this endpoint's url, and `can:update,post` finds {post}.
-            (new RouteMiddleware($this->container))->throughPage($resolved, $this->postedFrom());
+            (new RouteMiddleware($this->container))->throughRequest($resolved, $this->page ?? $this->container->make('request'));
         } catch (RouteNotFoundException $e) {
             // `auth` asks for route('login') before it refuses, to have
             // somewhere to send the guest. A call sends nobody anywhere: it
@@ -461,14 +508,22 @@ class CallableRegistry
     }
 
     /**
-     * The page the call's action was posted from, or null - see
+     * The page the call running now was posted from, or null - see
      * HostCallController::notePage().
      *
      * @return array{url: string, params: array<string, string>}|null
      */
     private function postedFrom(): ?array
     {
-        $page = $this->container->make('request')->attributes->get(HostCallDispatcher::PAGE_ATTRIBUTE);
+        $attributes = $this->container->bound('request') ? $this->container->make('request')->attributes : null;
+
+        // A build asks as nobody, from no page - and its request notes every
+        // attribute read as the call needing a visitor.
+        if ($attributes === null || $attributes instanceof WatchedAttributes) {
+            return null;
+        }
+
+        $page = $attributes->get(HostCallDispatcher::PAGE_ATTRIBUTE);
 
         return is_array($page) ? $page : null;
     }
@@ -506,7 +561,23 @@ class CallableRegistry
      */
     private function arguments(ReflectionFunctionAbstract $callable, array $args): array
     {
-        return Injected::fill($callable, $this->resolveFormRequest($callable, $args), $this->container);
+        // A closure has no attributes, so nothing above bound its page.
+        if ($callable instanceof ReflectionFunction) {
+            $this->runMiddleware([], []);
+        }
+
+        return Injected::fill($callable, $this->resolveFormRequest($callable, $args), $this->container, $this->pageParams());
+    }
+
+    /**
+     * The page's route params, bound once its guards have run: the model a
+     * `can:update,post` was handed is the `Post $post` the method takes.
+     *
+     * @return array<string, mixed>
+     */
+    private function pageParams(): array
+    {
+        return $this->page?->route()?->parameters() ?? [];
     }
 
     /**
@@ -563,7 +634,7 @@ class CallableRegistry
         // The page's params first, then the method's own arguments by name:
         // posted from /verify-email/{id}/{hash}, EmailVerificationRequest's
         // $this->route('id') is the page's, as on Laravel's own route.
-        $page = $this->postedFrom()['params'] ?? [];
+        $page = $this->pageParams();
 
         if ($rest !== [] || $page !== []) {
             $this->routeTo($callRequest, array_slice($params, 1), $rest, $page);
@@ -625,10 +696,6 @@ class CallableRegistry
         $route->setRouter($router)->setContainer($this->container);
         $route->bind($request);
 
-        foreach ($page as $name => $value) {
-            $route->setParameter($name, $value);
-        }
-
         foreach ($params as $index => $param) {
             if (array_key_exists($index, $values) && is_scalar($values[$index])) {
                 $route->setParameter($param->getName(), (string) $values[$index]);
@@ -637,6 +704,14 @@ class CallableRegistry
 
         $request->setRouteResolver(fn () => $route);
         $router->substituteBindings($route);
+
+        // After binding, since they are bound already: a model handed to an
+        // explicit binder again is looked up by itself. The method's own win.
+        foreach ($page as $name => $value) {
+            if (! $route->hasParameter($name)) {
+                $route->setParameter($name, $value);
+            }
+        }
     }
 
     /**
