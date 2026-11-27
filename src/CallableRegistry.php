@@ -21,6 +21,7 @@ use ReflectionFunction;
 use ReflectionFunctionAbstract;
 use ReflectionMethod;
 use ReflectionNamedType;
+use RscKit\Http\HostCallDispatcher;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\Injected;
 use RuntimeException;
@@ -443,7 +444,10 @@ class CallableRegistry
         $resolved = $this->container->make(Router::class)->resolveMiddleware($middleware, $without);
 
         try {
-            RouteMiddleware::through($this->container, $this->container->make('request'), $resolved);
+            // Against the page the action was posted from, when the renderer
+            // said which: `signed` checks the link the visitor followed to
+            // it, not this endpoint's url, and `can:update,post` finds {post}.
+            (new RouteMiddleware($this->container))->throughPage($resolved, $this->postedFrom());
         } catch (RouteNotFoundException $e) {
             // `auth` asks for route('login') before it refuses, to have
             // somewhere to send the guest. A call sends nobody anywhere: it
@@ -454,6 +458,19 @@ class CallableRegistry
 
             throw new AuthenticationException;
         }
+    }
+
+    /**
+     * The page the call's action was posted from, or null - see
+     * HostCallController::notePage().
+     *
+     * @return array{url: string, params: array<string, string>}|null
+     */
+    private function postedFrom(): ?array
+    {
+        $page = $this->container->make('request')->attributes->get(HostCallDispatcher::PAGE_ATTRIBUTE);
+
+        return is_array($page) ? $page : null;
     }
 
     public function hasCallables(): bool
@@ -543,8 +560,13 @@ class CallableRegistry
         $callRequest = $this->container->make('request')->duplicate([], $data);
         $callRequest->setJson(new InputBag($data));
 
-        if ($rest !== []) {
-            $this->routeTo($callRequest, array_slice($params, 1), $rest);
+        // The page's params first, then the method's own arguments by name:
+        // posted from /verify-email/{id}/{hash}, EmailVerificationRequest's
+        // $this->route('id') is the page's, as on Laravel's own route.
+        $page = $this->postedFrom()['params'] ?? [];
+
+        if ($rest !== [] || $page !== []) {
+            $this->routeTo($callRequest, array_slice($params, 1), $rest, $page);
         }
 
         if (! $form) {
@@ -594,13 +616,18 @@ class CallableRegistry
      *
      * @param  array<int, \ReflectionParameter>  $params
      * @param  array<int, mixed>  $values
+     * @param  array<string, string>  $page  the params of the page it was posted from, under the method's own
      */
-    private function routeTo(Request $request, array $params, array $values): void
+    private function routeTo(Request $request, array $params, array $values, array $page = []): void
     {
         $router = $this->container->make(Router::class);
         $route = new Route(['POST'], $request->path(), fn () => null);
         $route->setRouter($router)->setContainer($this->container);
         $route->bind($request);
+
+        foreach ($page as $name => $value) {
+            $route->setParameter($name, $value);
+        }
 
         foreach ($params as $index => $param) {
             if (array_key_exists($index, $values) && is_scalar($values[$index])) {
