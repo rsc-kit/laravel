@@ -164,7 +164,7 @@ class CallableRegistry
         // the form and the models alike, so the post a policy was handed is
         // the post the method is.
         $previous = $this->page;
-        $this->page = (new RouteMiddleware($this->container))->requestFor($this->postedFrom(), self::uses($callable));
+        $this->page = (new RouteMiddleware($this->container))->requestFor($this->postedFrom(), self::uses($callable), self::postedFields($callable, $args));
 
         try {
             try {
@@ -402,6 +402,30 @@ class CallableRegistry
         $attrs = $this->resolveAttributes($class, $method);
 
         return $attrs['names'] === [] ? null : "#[{$attrs['names'][0]}]";
+    }
+
+    /**
+     * The fields a form posted, when the callable takes them as a request:
+     * the input its guards read, as they would on the form's own post.
+     *
+     * @param  array<int, mixed>  $args
+     * @return array<array-key, mixed>
+     */
+    private static function postedFields(array|string|Closure $callable, array $args): array
+    {
+        if (! is_array($args[0] ?? null)) {
+            return [];
+        }
+
+        $reflection = match (true) {
+            $callable instanceof Closure => new ReflectionFunction($callable),
+            is_string($callable) => new ReflectionMethod($callable, '__invoke'),
+            default => new ReflectionMethod($callable[0], $callable[1]),
+        };
+
+        $type = (Injected::leaves($reflection)[0] ?? null)?->getType();
+
+        return $type instanceof ReflectionNamedType && is_a($type->getName(), Request::class, true) ? $args[0] : [];
     }
 
     /**

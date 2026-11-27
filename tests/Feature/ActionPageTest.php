@@ -1,9 +1,12 @@
 <?php
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Routing\UrlRoutable;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Testing\TestResponse;
@@ -94,6 +97,15 @@ class PublishesPosts
     }
 }
 
+class SignsInByEmail
+{
+    #[Middleware('throttle:sign-in')]
+    public function store(Request $request): ?string
+    {
+        return $request->input('email');
+    }
+}
+
 beforeEach(function () {
     config()->set('rsc.host_call_secret', 'page-secret');
     Route::post('/__rsc/host-call', HostCallController::class)->middleware('web');
@@ -107,6 +119,7 @@ beforeEach(function () {
     $registry->register('Account.own', [ReadsPageParams::class, 'withOwn']);
     $registry->register('Posts.publish', [PublishesPosts::class, 'publish']);
     $registry->register('Posts.open', [PublishesPosts::class, 'open']);
+    $registry->register('Session.store', [SignsInByEmail::class, 'store']);
 
     // Ada's post is 1; whoever is asking is Ada.
     Gate::define('publish', fn (?object $user, PagePost $post) => $post->owner === 'ada');
@@ -200,5 +213,23 @@ describe('a model the action takes', function () {
         callFromPage('Posts.open', [], $from('3'))->assertNotFound();
         callFromPage('Posts.open', [], null)->assertNotFound();
         callFromPage('Posts.open', [], ['url' => 'http://localhost/elsewhere', 'params' => []])->assertNotFound();
+    });
+});
+
+// Fortify's throttle:login keys on the email the form posted. Read from a GET
+// of the page, there was no email, and every account behind one address
+// shared one bucket: a visitor mistyping their password locked out everyone
+// else signing in from their office.
+describe('a guard reading what the form posted', function () {
+    beforeEach(function () {
+        RateLimiter::for('sign-in', fn (Request $request) => Limit::perMinute(1)->by((string) $request->input('email')));
+    });
+
+    it('is handed the fields, as on the form\'s own post', function () {
+        $page = ['url' => 'http://localhost/login', 'params' => []];
+
+        callFromPage('Session.store', [['email' => 'ada@example.com']], $page)->assertOk()->assertJson(['result' => 'ada@example.com']);
+        callFromPage('Session.store', [['email' => 'ada@example.com']], $page)->assertTooManyRequests();
+        callFromPage('Session.store', [['email' => 'grace@example.com']], $page)->assertOk()->assertJson(['result' => 'grace@example.com']);
     });
 });

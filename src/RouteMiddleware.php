@@ -147,15 +147,20 @@ class RouteMiddleware
      * anyone looks a record up, and before `can`, so the policy is handed
      * the model.
      *
+     * Given the fields a form posted, it is that post: `throttle:login`
+     * keys on the email, and read from a GET of the page it found none, so
+     * every account behind one address shared a single bucket.
+     *
      * @param  array{url?: mixed, params?: mixed}|null  $page
+     * @param  array<array-key, mixed>  $fields
      */
-    public function requestFor(?array $page, string|Closure|null $uses = null): ?Request
+    public function requestFor(?array $page, string|Closure|null $uses = null, array $fields = []): ?Request
     {
         if (! is_string($page['url'] ?? null)) {
             return null;
         }
 
-        return $this->pageRequest($this->container->make('request'), $this->container->make(Router::class), $page, $uses);
+        return $this->pageRequest($this->container->make('request'), $this->container->make(Router::class), $page, $uses, $fields);
     }
 
     /**
@@ -170,8 +175,9 @@ class RouteMiddleware
      * refuses it.
      *
      * @param  array{url: string, params?: mixed}  $page
+     * @param  array<array-key, mixed>  $fields
      */
-    private function pageRequest(Request $call, Router $router, array $page, string|Closure|null $uses = null): Request
+    private function pageRequest(Request $call, Router $router, array $page, string|Closure|null $uses = null, array $fields = []): Request
     {
         $server = $call->server->all();
 
@@ -183,7 +189,7 @@ class RouteMiddleware
             }
         }
 
-        $request = Request::create($page['url'], 'GET', [], $call->cookies->all(), [], $server);
+        $request = Request::create($page['url'], $fields === [] ? 'GET' : 'POST', $fields, $call->cookies->all(), [], $server);
 
         if ($call->hasSession()) {
             $request->setLaravelSession($call->session());
