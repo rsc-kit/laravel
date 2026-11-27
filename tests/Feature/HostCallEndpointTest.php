@@ -340,6 +340,33 @@ describe('revalidation', function () {
         expect($answer['reply']['revalidate'])->toBe(['orders']);
     });
 
+    it('carries what an action marked stale before it redirected', function () {
+        // The starter kit's profile form: Rsc::revalidate('all') so the
+        // sidebar shows the new name, then to_route(). The redirect answered
+        // without the marks, and the sidebar kept the old name.
+        $dispatcher = dispatcherWith([
+            'Profile.update' => function () {
+                app(Revalidation::class)->mark('all');
+
+                return redirect('/settings/profile');
+            },
+        ]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Profile.update', 'args' => []]);
+
+        expect($answer['status'])->toBe(200)
+            ->and($answer['reply']['redirect'])->toBe('/settings/profile')
+            ->and($answer['reply']['revalidate'])->toBe(['all']);
+    });
+
+    it('omits the key from a redirect that marked nothing', function () {
+        $dispatcher = dispatcherWith(['Session.store' => fn () => redirect('/dashboard')]);
+
+        $answer = $dispatcher->dispatch(['function' => 'Session.store', 'args' => []]);
+
+        expect($answer['reply'])->not->toHaveKey('revalidate');
+    });
+
     it('omits the key when nothing was marked', function () {
         // Absent rather than empty: the renderer branches on the key, and an
         // empty array that reads as truthy re-renders regions for every call

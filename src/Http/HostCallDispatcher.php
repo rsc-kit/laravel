@@ -196,10 +196,20 @@ class HostCallDispatcher
             // meant a 302, and the engine's default is a 307, which replays a
             // POST at the destination. Its headers do not - the reply has no
             // field for them.
-            return [
-                'status' => 200,
-                'reply' => ['redirect' => $this->forTheVisitor((string) $response->headers->get('Location')), 'redirectStatus' => $response->getStatusCode()],
-            ];
+            $reply = ['redirect' => $this->forTheVisitor((string) $response->headers->get('Location')), 'redirectStatus' => $response->getStatusCode()];
+
+            // What it marked stale before redirecting goes with it, as with a
+            // result: Rsc::revalidate('all') then to_route() is how an action
+            // that changed the layout's data says so, and dropped here the
+            // layout kept what it showed. Taken now - the finally below runs
+            // after this return is built.
+            $marked = $this->revalidation->flush();
+
+            if ($marked !== []) {
+                $reply['revalidate'] = $marked;
+            }
+
+            return ['status' => 200, 'reply' => $reply];
         } catch (RscRefusalException $e) {
             // Rsc::refuse(): an answer, never reported, with its data beside
             // the message. Without data it is the refusal it always was.

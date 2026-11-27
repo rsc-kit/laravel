@@ -64,6 +64,11 @@ class ConformanceServiceProvider extends ServiceProvider
 
             return 'ok';
         });
+        $registry->register('Conformance.revalidateThenRedirect', function () {
+            Rsc::revalidate('orders');
+
+            return redirect('/login');
+        });
         $registry->register('Conformance.fail', fn () => throw new RuntimeException('boom'));
         $registry->register('Conformance.change', function (): string {
             Rsc::changed('conformance:changed');
