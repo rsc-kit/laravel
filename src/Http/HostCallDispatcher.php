@@ -42,6 +42,12 @@ class HostCallDispatcher
     /** The visitor's User-Agent: this call's own is the renderer's runtime. */
     public const CLIENT_USER_AGENT_HEADER = 'X-Rsc-Client-User-Agent';
 
+    /** The page an action was posted from, as JSON: {url, params}. */
+    public const PAGE_HEADER = 'X-Rsc-Page';
+
+    /** Where the page an action was posted from is kept on the call's request. */
+    public const PAGE_ATTRIBUTE = 'rsc.page';
+
     /** The most calls one batch may carry: the engine's own BATCH_LIMIT. */
     public const BATCH_LIMIT = 50;
 

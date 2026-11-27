@@ -55,21 +55,13 @@ class RouteMiddleware
             return true;
         }
 
-        $router = $this->container->make(Router::class);
-        $call = $this->container->make('request');
-        $request = is_string($page['url'] ?? null) ? $this->pageRequest($call, $router, $page) : $call;
-
         // Resolved through the router so an alias becomes the class it stands
         // for and a group becomes its members. Passing the alias itself to the
         // Pipeline gets a string it cannot instantiate.
-        $resolved = $router->resolveMiddleware($names);
-
-        // The page's request is THE request while its middleware run, so a
-        // policy or a limiter reaching for request() finds the page too.
-        $this->swapRequest($request);
+        $resolved = $this->container->make(Router::class)->resolveMiddleware($names);
 
         try {
-            self::through($this->container, $request, $resolved);
+            $this->throughPage($resolved, $page);
         } catch (AuthenticationException $e) {
             // Laravel's own behaviour, which its exception handler supplies on
             // an ordinary route and nothing supplies here: send them to log in
@@ -96,11 +88,51 @@ class RouteMiddleware
                 .'with $middleware->redirectGuestsTo(\'/login\').',
                 previous: $e,
             );
-        } finally {
-            $this->swapRequest($call);
         }
 
         return true;
+    }
+
+    /**
+     * Run resolved middleware against a request for the page, or the call's
+     * own when there is no page.
+     *
+     * The page's request is THE request while they run, so a policy or a
+     * limiter reaching for request() finds the page too.
+     *
+     * @param  array<int, mixed>  $resolved
+     * @param  array{url?: mixed, params?: mixed}|null  $page
+     *
+     * @throws RscRedirectException
+     * @throws HttpException
+     */
+    public function throughPage(array $resolved, ?array $page): void
+    {
+        $call = $this->container->make('request');
+        $request = $this->requestFor($page) ?? $call;
+
+        $this->swapRequest($request);
+
+        try {
+            self::through($this->container, $request, $resolved);
+        } finally {
+            $this->swapRequest($call);
+        }
+    }
+
+    /**
+     * A request for the page, carrying the call's visitor, or null when there
+     * is no page - see pageRequest().
+     *
+     * @param  array{url?: mixed, params?: mixed}|null  $page
+     */
+    public function requestFor(?array $page): ?Request
+    {
+        if (! is_string($page['url'] ?? null)) {
+            return null;
+        }
+
+        return $this->pageRequest($this->container->make('request'), $this->container->make(Router::class), $page);
     }
 
     /**

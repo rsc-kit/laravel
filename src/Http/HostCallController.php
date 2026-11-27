@@ -27,6 +27,7 @@ class HostCallController
 
         self::believeClientIp($request);
         self::believeClientUserAgent($request);
+        self::notePage($request);
 
         // Decoded here rather than through $request->json(), which throws on
         // malformed input and would surface as a 500 — a caller sending
@@ -135,6 +136,32 @@ class HostCallController
 
         $request->headers->set('User-Agent', $agent);
         $request->server->set('HTTP_USER_AGENT', $agent);
+    }
+
+    /**
+     * Keep the page an action was posted from, for its guards.
+     *
+     * The call is a POST to this endpoint, so a guard on the action read this
+     * url: `signed` refused every link, and nothing had the page's params.
+     * The renderer sends the page beside the call - believed past the secret,
+     * as the address is - and CallableRegistry runs the guards against a
+     * request for it. Only a url and string params; anything else is no page.
+     */
+    public static function notePage(Request $request): void
+    {
+        $page = json_decode((string) $request->header(HostCallDispatcher::PAGE_HEADER, ''), true);
+
+        if (! is_array($page) || ! is_string($page['url'] ?? null) || ! preg_match('#^https?://#i', $page['url'])) {
+            return;
+        }
+
+        $params = array_filter(
+            is_array($page['params'] ?? null) ? $page['params'] : [],
+            fn (mixed $value, mixed $name): bool => is_string($name) && is_string($value),
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        $request->attributes->set(HostCallDispatcher::PAGE_ATTRIBUTE, ['url' => $page['url'], 'params' => $params]);
     }
 
     /**
