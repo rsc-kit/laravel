@@ -146,12 +146,19 @@ class HostTypes
         // The call's first argument, validated by the request's rules.
         if ($firstType instanceof ReflectionNamedType && ! $firstType->isBuiltin()
             && is_subclass_of($firstType->getName(), FormRequest::class)) {
-            $signature['params'][] = $this->formRequest($firstType->getName());
+            $signature['params'][] = $request = $this->formRequest($firstType->getName());
 
             foreach (array_slice($params, 1) as $param) {
                 if (! $param->isVariadic()) {
                     $signature['params'][] = $this->of($param->getType());
                 }
+            }
+
+            // Rules that ask for nothing - a request kept for its methods, as
+            // the starter kit's TwoFactorAuthenticationRequest is - ask for
+            // no argument either.
+            if (count($signature['params']) === 1 && ($request['required'] ?? []) === []) {
+                $signature['optional'] = 1;
             }
         } elseif ($firstType instanceof ReflectionNamedType && ! $firstType->isBuiltin()
             && is_a($firstType->getName(), Request::class, true)) {

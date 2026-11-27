@@ -39,6 +39,15 @@ namespace Tests\Feature\HostTypesFixtures {
         }
     }
 
+    /** Kept for its methods, as the starter kit's TwoFactorAuthenticationRequest is. */
+    class ShowSettings extends FormRequest
+    {
+        public function rules(): array
+        {
+            return [];
+        }
+    }
+
     class SendContact extends FormRequest
     {
         public function rules(): array
@@ -104,6 +113,8 @@ namespace {
     use Illuminate\Support\Facades\Artisan;
     use RscKit\Support\HostTypes;
     use Tests\Feature\HostTypesFixtures\Orders;
+    use Tests\Feature\HostTypesFixtures\ShowSettings;
+    use Tests\Feature\HostTypesFixtures\StoreOrder;
 
     function describeOrders(): array
     {
@@ -117,6 +128,8 @@ namespace {
             'Orders.update' => [Orders::class, 'update'],
             'Orders.untyped' => [Orders::class, 'untyped'],
             'Inline.add' => fn (int $a, int $b): int => $a + $b,
+            'Settings.show' => fn (ShowSettings $request): array => [],
+            'Settings.required' => fn (StoreOrder $request): array => [],
             'Pages.byCursor' => fn (): CursorPaginator => throw new LogicException,
             'Pages.counted' => fn (): LengthAwarePaginator => throw new LogicException,
         ])), true);
@@ -133,6 +146,14 @@ namespace {
         expect($types['Orders.find']['optional'])->toBe(1)
             ->and($types['Orders.tag']['rest'])->toBe(['type' => 'string'])
             ->and($types['Orders.tag']['params'])->toBe([['type' => 'string']]);
+    });
+
+    it('asks for no argument when the FormRequest requires no field, and for one when it does', function () {
+        $types = describeOrders()['types'];
+
+        expect($types['Settings.show']['optional'])->toBe(1)
+            ->and($types['Settings.required'])->not->toHaveKey('optional')
+            ->and($types['Orders.update'])->not->toHaveKey('optional');
     });
 
     it('types a page as it encodes: next_cursor by cursor, total when counted', function () {
