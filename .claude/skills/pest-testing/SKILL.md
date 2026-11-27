@@ -23,7 +23,7 @@ renders. Do not write a test that needs a renderer; put it in the engine.
 
 ## Structure
 
-- `tests/Unit/` - pure classes: `CallableRegistry`, the attributes, `RscRedirectException`, `RendererRoutes`. There is no booted app; `app()` is a bare container, so anything that needs config, the router or the service provider goes in Feature.
+- `tests/Unit/` - pure classes: `CallableRegistry`, the attributes, `RendererRoutes`. There is no booted app; `app()` is a bare container, so anything that needs config, the router or the service provider goes in Feature.
 - `tests/Feature/` - the Testbench app with `RscKitServiceProvider` (`tests/Pest.php` applies `Tests\TestCase` to this directory only): the host-call endpoint, route middleware, action discovery, the commands, the proxy.
 - `tests/Conformance/ConformanceServiceProvider.php` - the `Conformance.*` functions rsc-kit's suite calls, written the way an app would write them.
 - `tests/fixtures/` - a route manifest, a renderer stub, a minimal `rsc-app`.
