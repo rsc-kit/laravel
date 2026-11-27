@@ -45,8 +45,12 @@ class RscKitServiceProvider extends ServiceProvider
      * here and checked by rsc:install, rather than left to a sentence in a
      * changelog — a renderer a major behind does not fail at boot, it fails at
      * whichever request first needs the part that changed.
+     *
+     * Moved with every release that needs a newer engine minor. It sat at
+     * ^0.24 through 0.44, and rsc:install warned every new app that its
+     * renderer was out of step.
      */
-    public const ENGINE_CONSTRAINT = '^0.24';
+    public const ENGINE_CONSTRAINT = '^0.45';
 
     /**
      * What the renderer is allowed to be handed.
