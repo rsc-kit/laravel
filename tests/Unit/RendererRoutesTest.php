@@ -69,3 +69,16 @@ test('the root page is home, unless a page at /home has the name', function () {
         ['segments' => [['type' => 'static', 'value' => 'home']]],
     ]]))->toBe(['/home' => 'home']);
 });
+
+test('a page or route.ts that declares its name has it, by its pattern', function () {
+    expect(RendererRoutes::declaredNames([
+        'routes' => [
+            ['segments' => [['type' => 'static', 'value' => 'verify-email'], ['type' => 'param', 'value' => 'id'], ['type' => 'param', 'value' => 'hash']], 'routeName' => 'verification.verify'],
+            ['segments' => [['type' => 'static', 'value' => 'about']]],
+        ],
+        'apis' => [['segments' => [['type' => 'static', 'value' => 'webhooks']], 'methods' => ['POST'], 'routeName' => 'webhooks']],
+    ]))->toBe([
+        '/verify-email/{id}/{hash}' => 'verification.verify',
+        '/webhooks' => 'webhooks',
+    ]);
+});
