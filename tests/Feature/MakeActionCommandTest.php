@@ -62,7 +62,17 @@ it('writes an rpc class under app/Rsc with --rpc, and never a revalidate', funct
     expect($source)
         ->toContain('namespace App\Rsc;')
         ->toContain('public function recent(): mixed')
-        ->not->toContain("Rsc::revalidate('");
+        ->not->toContain("Rsc::revalidate('")
+        ->not->toContain('return redirect()');
+});
+
+it("tells an action's author to answer as a controller does", function () {
+    $this->artisan('make:rsc-action', ['name' => 'Profile', '--method' => ['update']])->assertSuccessful();
+
+    expect(File::get(app_path('Rsc/Actions/Profile.php')))
+        ->toContain('return redirect(), to_route() or back()')
+        ->toContain("back()->with('status', '...')")
+        ->not->toContain('RscRedirectException');
 });
 
 it('refuses to overwrite without --force', function () {

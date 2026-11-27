@@ -187,7 +187,7 @@ class MakeActionCommand extends Command
 
         $doc = $rpc
             ? " * Reached from a server component as rpc('{$class}".($invokable ? "'" : ".method'").").\n *\n * Public methods are what the renderer can call; constructor injection works;\n * auth()->user() is the visitor the page is being rendered for."
-            : " * A server action. The build writes server-actions/{$this->module}.ts, a \"use server\"\n * module exporting ".($invokable ? 'this class as its default' : 'each public method under its own name').", that a client component\n * imports and calls.\n *\n * Throw a ValidationException, AuthenticationException or AuthorizationException\n * and the refusal reaches the form as itself; Rsc::revalidate() names what a\n * successful call made stale, and the answer carries it re-rendered.";
+            : " * A server action. The build writes server-actions/{$this->module}.ts, a \"use server\"\n * module exporting ".($invokable ? 'this class as its default' : 'each public method under its own name').", that a client component\n * imports and calls.\n *\n * Throw a ValidationException, AuthenticationException or AuthorizationException\n * and the refusal reaches the form as itself; Rsc::revalidate() names what a\n * successful call made stale, and the answer carries it re-rendered.\n *\n * Answer as a controller does: return redirect(), to_route() or back() and the\n * browser follows it - back() is the page the form was posted from - and\n * back()->with('status', '...') leaves a message the page reads.";
 
         return "<?php\n\n"
             ."namespace {$namespace};\n\n"
