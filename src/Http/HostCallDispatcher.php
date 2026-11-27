@@ -6,6 +6,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
 use JsonException;
 use JsonSerializable;
@@ -197,6 +198,12 @@ class HostCallDispatcher
             }
 
             return ['status' => $e->getStatusCode(), 'reply' => $reply];
+        } catch (ModelNotFoundException) {
+            // No such record, as Laravel's handler answers it: a 404, not a
+            // failure - the page's {post} named one that does not exist, or
+            // a findOrFail() found nothing. Its own message names the model's
+            // class, which is not the visitor's to read.
+            return ['status' => 404, 'reply' => ['error' => 'Not found.', 'refusalStatus' => 404]];
         } catch (HttpExceptionInterface $e) {
             // A middleware that aborted with a status meant that status.
             // throttle answers 429, a policy 403, a signed-url check 403 — and

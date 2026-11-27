@@ -2,6 +2,7 @@
 
 namespace RscKit;
 
+use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
@@ -108,8 +109,20 @@ class RouteMiddleware
      */
     public function throughPage(array $resolved, ?array $page): void
     {
+        $this->throughRequest($resolved, $this->requestFor($page) ?? $this->container->make('request'));
+    }
+
+    /**
+     * Run resolved middleware against this request, THE request while they run.
+     *
+     * @param  array<int, mixed>  $resolved
+     *
+     * @throws RscRedirectException
+     * @throws HttpException
+     */
+    public function throughRequest(array $resolved, Request $request): void
+    {
         $call = $this->container->make('request');
-        $request = $this->requestFor($page) ?? $call;
 
         $this->swapRequest($request);
 
@@ -124,15 +137,23 @@ class RouteMiddleware
      * A request for the page, carrying the call's visitor, or null when there
      * is no page - see pageRequest().
      *
+     * Given what an action runs - `Class@method`, or a closure - the page's
+     * route runs it, and its params are left as the strings they were: a
+     * SubstituteBindings in the action's middleware binds them, explicitly
+     * and implicitly from the method's own signature, where Laravel's
+     * priority puts it - after `auth`, so a guest is turned away before
+     * anyone looks a record up, and before `can`, so the policy is handed
+     * the model.
+     *
      * @param  array{url?: mixed, params?: mixed}|null  $page
      */
-    public function requestFor(?array $page): ?Request
+    public function requestFor(?array $page, string|Closure|null $uses = null): ?Request
     {
         if (! is_string($page['url'] ?? null)) {
             return null;
         }
 
-        return $this->pageRequest($this->container->make('request'), $this->container->make(Router::class), $page);
+        return $this->pageRequest($this->container->make('request'), $this->container->make(Router::class), $page, $uses);
     }
 
     /**
@@ -148,7 +169,7 @@ class RouteMiddleware
      *
      * @param  array{url: string, params?: mixed}  $page
      */
-    private function pageRequest(Request $call, Router $router, array $page): Request
+    private function pageRequest(Request $call, Router $router, array $page, string|Closure|null $uses = null): Request
     {
         $server = $call->server->all();
 
@@ -168,7 +189,7 @@ class RouteMiddleware
 
         $request->setUserResolver($call->getUserResolver());
 
-        $route = new Route(['GET', 'HEAD'], $request->path(), fn () => null);
+        $route = new Route(['GET', 'HEAD'], $request->path(), $uses === null ? fn () => null : ['uses' => $uses]);
         $route->setRouter($router)->setContainer($this->container);
         $route->bind($request);
 
@@ -179,7 +200,10 @@ class RouteMiddleware
         }
 
         $request->setRouteResolver(fn () => $route);
-        $router->substituteBindings($route);
+
+        if ($uses === null) {
+            $router->substituteBindings($route);
+        }
 
         return $request;
     }

@@ -19,6 +19,7 @@ use ReflectionParameter;
 use ReflectionProperty;
 use SplFileInfo;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use UnitEnum;
 
 /**
@@ -46,7 +47,6 @@ class Injected
      */
     private const NEVER = [
         Request::class,
-        UrlRoutable::class,
         DateTimeInterface::class,
         SplFileInfo::class,
         UnitEnum::class,
@@ -84,6 +84,12 @@ class Injected
 
         if (! class_exists($class) && ! interface_exists($class)) {
             return false;
+        }
+
+        // Post $post: the page's {post}, bound as a route binds it - never
+        // an id the call sends, which a guard on the page never saw.
+        if (is_a($class, UrlRoutable::class, true)) {
+            return true;
         }
 
         foreach (self::NEVER as $not) {
@@ -136,9 +142,10 @@ class Injected
      * makes put where the callable takes it.
      *
      * @param  array<int, mixed>  $args
+     * @param  array<string, mixed>  $bound  the route params of the page the call was posted from, bound
      * @return array<int, mixed>
      */
-    public static function fill(ReflectionFunctionAbstract $fn, array $args, Container $container): array
+    public static function fill(ReflectionFunctionAbstract $fn, array $args, Container $container, array $bound = []): array
     {
         $params = $fn->getParameters();
 
@@ -150,7 +157,7 @@ class Injected
 
         foreach ($params as $param) {
             if (self::is($param)) {
-                $filled[] = self::resolve($param, $container);
+                $filled[] = self::resolve($param, $container, $bound);
             } elseif ($param->isVariadic()) {
                 return [...$filled, ...$args];
             } elseif ($args !== []) {
@@ -166,9 +173,24 @@ class Injected
         return $filled;
     }
 
-    private static function resolve(ReflectionParameter $param, Container $container): mixed
+    /** @param  array<string, mixed>  $bound */
+    private static function resolve(ReflectionParameter $param, Container $container, array $bound): mixed
     {
         $attribute = Util::getContextualAttributeFromDependency($param);
+        $class = $param->getType()->getName();
+
+        // Bound by the page's route, or not there at all: a call from no page,
+        // or from one with no {post}, is a post that does not exist - the
+        // container would make an empty one, which is not the post.
+        if ($attribute === null && is_a($class, UrlRoutable::class, true)) {
+            $value = $bound[$param->getName()] ?? null;
+
+            if (! $value instanceof $class) {
+                throw new NotFoundHttpException(sprintf('No {%s} on the page this was sent from.', $param->getName()));
+            }
+
+            return $value;
+        }
 
         if ($attribute === null) {
             return $container->make($param->getType()->getName());

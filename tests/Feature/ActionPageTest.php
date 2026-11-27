@@ -1,7 +1,9 @@
 <?php
 
+use Illuminate\Contracts\Routing\UrlRoutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Testing\TestResponse;
@@ -52,6 +54,46 @@ class ReadsPageParams
     }
 }
 
+/** A record bound by route, with no database behind it: posts 1 and 2 exist. */
+class PagePost implements UrlRoutable
+{
+    public function __construct(public string $id = '', public string $owner = '') {}
+
+    public function getRouteKey(): mixed
+    {
+        return $this->id;
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'id';
+    }
+
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        return in_array($value, ['1', '2'], true) ? new self($value, $value === '1' ? 'ada' : 'grace') : null;
+    }
+
+    public function resolveChildRouteBinding($childType, $value, $field): ?self
+    {
+        return null;
+    }
+}
+
+class PublishesPosts
+{
+    #[Middleware('can:publish,post')]
+    public function publish(PagePost $post): string
+    {
+        return "published {$post->id}";
+    }
+
+    public function open(PagePost $post): string
+    {
+        return "opened {$post->id}";
+    }
+}
+
 beforeEach(function () {
     config()->set('rsc.host_call_secret', 'page-secret');
     Route::post('/__rsc/host-call', HostCallController::class)->middleware('web');
@@ -63,6 +105,11 @@ beforeEach(function () {
     $registry->register('Account.verify', [SignedAction::class, 'verify']);
     $registry->register('Account.params', [ReadsPageParams::class, 'verify']);
     $registry->register('Account.own', [ReadsPageParams::class, 'withOwn']);
+    $registry->register('Posts.publish', [PublishesPosts::class, 'publish']);
+    $registry->register('Posts.open', [PublishesPosts::class, 'open']);
+
+    // Ada's post is 1; whoever is asking is Ada.
+    Gate::define('publish', fn (?object $user, PagePost $post) => $post->owner === 'ada');
 });
 
 /** @param  array<string, mixed>|string|null  $page  what X-Rsc-Page carries */
@@ -132,5 +179,26 @@ describe('the request an action takes', function () {
     it('drops a param that is not a string', function () {
         callFromPage('Account.params', [[]], ['url' => 'http://localhost/verify-email/7/abc', 'params' => ['id' => 7, 'hash' => ['abc']]])
             ->assertForbidden();
+    });
+});
+
+describe('a model the action takes', function () {
+    $from = fn (string $post) => ['url' => "http://localhost/posts/{$post}", 'params' => ['post' => $post]];
+
+    // The guard and the method are handed one post - the page's - so there
+    // is no id to send that the guard did not see.
+    it('is the page\'s, bound once, and the one its guard was handed', function () use ($from) {
+        callFromPage('Posts.publish', [], $from('1'))->assertOk()->assertJson(['result' => 'published 1']);
+        callFromPage('Posts.publish', [], $from('2'))->assertForbidden();
+    });
+
+    it('is never an id the call sends', function () use ($from) {
+        callFromPage('Posts.publish', ['2'], $from('1'))->assertOk()->assertJson(['result' => 'published 1']);
+    });
+
+    it('is a 404 when the page names no such record, or there is no page', function () use ($from) {
+        callFromPage('Posts.open', [], $from('3'))->assertNotFound();
+        callFromPage('Posts.open', [], null)->assertNotFound();
+        callFromPage('Posts.open', [], ['url' => 'http://localhost/elsewhere', 'params' => []])->assertNotFound();
     });
 });

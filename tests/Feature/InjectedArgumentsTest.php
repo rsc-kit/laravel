@@ -217,7 +217,15 @@ it('leaves data to the call rather than make it empty', function (string $method
     expect(injected($method, ['anything'])['status'])->toBe(500);
     expect(injected($method, [])['status'])->toBe(500);
     expect(injectedParams($method))->toHaveCount(1);
-})->with(['model', 'date', 'size', 'data', 'rows']);
+})->with(['date', 'size', 'data', 'rows']);
+
+// A model is the page's {product}, bound - never an id the call sends, and
+// never one the container makes empty. From no page there is no product.
+it('takes a model from the page, and answers 404 when there is no page', function () {
+    expect(injected('model', [])['status'])->toBe(404)
+        ->and(injected('model', [7])['status'])->toBe(404)
+        ->and(injectedParams('model'))->toBe([]);
+});
 
 it('leaves a nullable or defaulted class to the call, as it was', function () {
     expect(injected('optional', [null, 'a@b.test'])['reply']['result'])->toBe([null, 'a@b.test']);
