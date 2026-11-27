@@ -13,7 +13,6 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\ValidationException;
 use RscKit\CallableRegistry;
 use RscKit\Rsc;
-use RscKit\RscRedirectException;
 use RuntimeException;
 
 /**
@@ -59,7 +58,7 @@ class ConformanceServiceProvider extends ServiceProvider
             'Conformance.update',
             fn (ConformanceUpdate $request, string $record): string => $record.':'.$request->input('name'),
         );
-        $registry->register('Conformance.redirect', fn () => throw new RscRedirectException('/login'));
+        $registry->register('Conformance.redirect', fn () => redirect('/login'));
         $registry->register('Conformance.revalidate', function (): string {
             Rsc::revalidate('orders');
 
@@ -77,11 +76,6 @@ class ConformanceServiceProvider extends ServiceProvider
         $registry->register('Conformance.userAgent', fn (): ?string => request()->userAgent());
         $registry->register('Conformance.login', function (): string {
             Cookie::queue('conformance_login', '1');
-
-            return 'ok';
-        });
-        $registry->register('Conformance.flash', function (): string {
-            Rsc::flash('Saved.');
 
             return 'ok';
         });

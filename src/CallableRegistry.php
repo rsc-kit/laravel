@@ -186,7 +186,7 @@ class CallableRegistry
      * first. Left alone, a RedirectResponse was serialised as an object of
      * headers and the visitor stayed where they were, with nothing said.
      *
-     * @throws RscRedirectException
+     * @throws HttpResponseException a redirect
      */
     private function answer(string $name, mixed $result): mixed
     {
@@ -208,7 +208,7 @@ class CallableRegistry
         }
 
         if ($result->isRedirect() && $result->headers->has('Location')) {
-            throw new RscRedirectException((string) $result->headers->get('Location'), $result->getStatusCode());
+            throw new HttpResponseException($result);
         }
 
         if ($result instanceof JsonResponse) {
