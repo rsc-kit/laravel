@@ -5,6 +5,8 @@ namespace RscKit;
 use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pipeline\Pipeline;
@@ -48,7 +50,7 @@ class RouteMiddleware
      * @param  array{url?: mixed, params?: mixed}|null  $page  the page they are about; null from an engine before 0.30.50
      *
      * @throws AuthenticationException
-     * @throws RscRedirectException
+     * @throws HttpResponseException a redirect
      */
     public function run(array $names, ?array $page = null): bool
     {
@@ -71,7 +73,7 @@ class RouteMiddleware
             $to = $this->loginUrl($e);
 
             if ($to !== null) {
-                throw new RscRedirectException($to);
+                throw new HttpResponseException(new RedirectResponse($to));
             }
 
             throw $e;
@@ -104,7 +106,7 @@ class RouteMiddleware
      * @param  array<int, mixed>  $resolved
      * @param  array{url?: mixed, params?: mixed}|null  $page
      *
-     * @throws RscRedirectException
+     * @throws HttpResponseException a redirect
      * @throws HttpException
      */
     public function throughPage(array $resolved, ?array $page): void
@@ -117,7 +119,7 @@ class RouteMiddleware
      *
      * @param  array<int, mixed>  $resolved
      *
-     * @throws RscRedirectException
+     * @throws HttpResponseException a redirect
      * @throws HttpException
      */
     public function throughRequest(array $resolved, Request $request): void
@@ -235,7 +237,7 @@ class RouteMiddleware
      *
      * @param  array<int, mixed>  $middleware  resolved
      *
-     * @throws RscRedirectException
+     * @throws HttpResponseException a redirect
      * @throws HttpException
      */
     public static function through(Container $container, mixed $request, array $middleware): void
@@ -256,7 +258,7 @@ class RouteMiddleware
         }
 
         if ($answer instanceof SymfonyResponse && $answer->isRedirect() && $answer->headers->has('Location')) {
-            throw new RscRedirectException((string) $answer->headers->get('Location'), $answer->getStatusCode());
+            throw new HttpResponseException($answer);
         }
 
         $status = $answer instanceof SymfonyResponse ? $answer->getStatusCode() : 403;

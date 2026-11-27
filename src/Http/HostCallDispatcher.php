@@ -7,12 +7,12 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Support\Jsonable;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\ValidationException;
 use JsonException;
 use JsonSerializable;
 use RscKit\CallableRegistry;
 use RscKit\Revalidation;
-use RscKit\RscRedirectException;
 use RscKit\RscRefusalException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
@@ -177,7 +177,16 @@ class HostCallDispatcher
                 'status' => 403,
                 'reply' => ['unauthorized' => true, 'error' => $e->getMessage()],
             ];
-        } catch (RscRedirectException $e) {
+        } catch (HttpResponseException $e) {
+            // Only a redirect gets here: a guard's, or one a callable returned
+            // or threw - CallableRegistry::answer() takes any other response
+            // apart first. Anything else is a failure.
+            $response = $e->getResponse();
+
+            if (! $response->isRedirect() || ! $response->headers->has('Location')) {
+                return $this->failure($e);
+            }
+
             // Answered 200 with the destination in the body, never as a 3xx.
             // An HTTP client follows a redirect transparently, so a real one
             // here would send this call to the destination and hand whatever
@@ -189,7 +198,7 @@ class HostCallDispatcher
             // field for them.
             return [
                 'status' => 200,
-                'reply' => ['redirect' => $this->forTheVisitor($e->getLocation()), 'redirectStatus' => $e->getStatus()],
+                'reply' => ['redirect' => $this->forTheVisitor((string) $response->headers->get('Location')), 'redirectStatus' => $response->getStatusCode()],
             ];
         } catch (RscRefusalException $e) {
             // Rsc::refuse(): an answer, never reported, with its data beside
