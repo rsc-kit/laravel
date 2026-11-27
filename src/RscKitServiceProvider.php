@@ -10,6 +10,7 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use LogicException;
 use RscKit\Console\InstallCommand;
 use RscKit\Console\MakeActionCommand;
 use RscKit\Console\PruneVersionsCommand;
@@ -239,6 +240,7 @@ class RscKitServiceProvider extends ServiceProvider
         $routes = Route::getRoutes();
         $routes->refreshNameLookups();
         $names = RendererRoutes::names($manifest);
+        $declared = RendererRoutes::declaredNames($manifest);
 
         // rscKit({ subdomains }) names the folders whose subdomain is their only
         // url, and the build writes them into the table. Their pages are routes
@@ -268,6 +270,34 @@ class RscKitServiceProvider extends ServiceProvider
                 $route->where($name, '.*');
             }
 
+            // The name the page declares is the one it answers to, wherever
+            // its folder is: `export const name = 'verification.verify'` is
+            // what Laravel's notification links to. One the application
+            // gives a route of its own at another url is refused rather than
+            // decided by registration order: route:cache refuses two routes
+            // with one name, and only one of them can be what route() means.
+            $own = $declared[$pattern] ?? null;
+
+            if ($own !== null) {
+                $taken = $routes->getByName($own);
+
+                // A page's own route is not a clash: from route:cache, the
+                // table already has this one under its name.
+                if ($taken !== null && $taken !== $replaced && ! str_starts_with($taken->getActionName(), RendererProxy::class)) {
+                    throw new LogicException(sprintf(
+                        "The page at %s exports name = '%s', and the application names its route %s %s that too. A route has one name: remove one of them.",
+                        $uri,
+                        $own,
+                        implode('|', $taken->methods()),
+                        $taken->uri(),
+                    ));
+                }
+
+                $route->name($own);
+
+                continue;
+            }
+
             // The application's route this page takes the url of is gone, and
             // its name is the page's to keep: route('verification.notice') is
             // what Laravel asks for, not the page's path. With other methods
@@ -280,7 +310,8 @@ class RscKitServiceProvider extends ServiceProvider
 
             $name = in_array('GET', $methods, true) ? ($names[$pattern] ?? null) : null;
 
-            if ($name !== null && ! $routes->hasNamedRoute($name)) {
+            // A path's name another page declared is that page's.
+            if ($name !== null && ! in_array($name, $declared, true) && ! $routes->hasNamedRoute($name)) {
                 $route->name($name);
             }
         }

@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\CompiledRouteCollection;
+use Illuminate\Support\Facades\URL;
 
 // Decided before the package boots, so it is set as the file loads: a route
 // table the build would have written, with a page at /, a param, a
@@ -30,9 +31,15 @@ file_put_contents($manifest, json_encode([
         // Where the application has a named route of its own at the same url.
         ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'verify-email']]],
         ['segments' => [['type' => 'static', 'value' => 'reports']]],
+        // Pages that declare their name: export const name = '...'.
+        ['segments' => [['type' => 'static', 'value' => 'merchant'], ['type' => 'static', 'value' => 'verify-email'], ['type' => 'param', 'value' => 'id'], ['type' => 'param', 'value' => 'hash']], 'routeName' => 'verification.verify'],
+        // `profile` would be this one's by its path; /me declares it.
+        ['segments' => [['type' => 'static', 'value' => 'profile']]],
+        ['segments' => [['type' => 'static', 'value' => 'me']], 'routeName' => 'profile'],
     ],
     'apis' => [
         ['segments' => [['type' => 'static', 'value' => 'api'], ['type' => 'static', 'value' => 'health']], 'methods' => ['GET']],
+        ['segments' => [['type' => 'static', 'value' => 'webhooks'], ['type' => 'static', 'value' => 'stripe']], 'methods' => ['POST'], 'routeName' => 'webhooks.stripe'],
     ],
 ]));
 putenv('RSC_TEST_ROUTES_MANIFEST='.$manifest);
@@ -182,4 +189,30 @@ it('can be cached, and keeps the names when it is', function () {
 
 it('names the root page home', function () {
     expect(route('home', absolute: false))->toBe('/');
+});
+
+// export const name in the page: the name Laravel's own code asks for, given
+// to the page wherever its folder is. VerifyEmail links to
+// verification.verify with an id and a hash, and that is this page.
+it('gives a page the name it declares', function () {
+    expect(route('verification.verify', ['id' => 5, 'hash' => 'abc']))
+        ->toBe('http://merchant.example.test/verify-email/5/abc')
+        ->and(route('profile', absolute: false))->toBe('/me')
+        // A route.ts that answers only POST is named too, when it says so.
+        ->and(route('webhooks.stripe', absolute: false))->toBe('/webhooks/stripe');
+
+    $signed = URL::temporarySignedRoute('verification.verify', now()->addHour(), ['id' => 5, 'hash' => 'abc']);
+
+    expect($signed)->toStartWith('http://merchant.example.test/verify-email/5/abc?expires=');
+    $this->get($signed)->assertStatus(502);
+});
+
+it('keeps a declared name when the table is cached', function () {
+    $routes = app('router')->getRoutes();
+    $cached = (new CompiledRouteCollection(...array_values($routes->compile())))
+        ->setRouter(app('router'))
+        ->setContainer(app());
+
+    expect($cached->getByName('verification.verify')->uri())->toBe('verify-email/{id}/{hash}')
+        ->and($cached->getByName('profile')->uri())->toBe('me');
 });

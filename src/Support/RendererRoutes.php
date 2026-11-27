@@ -55,6 +55,37 @@ final class RendererRoutes
     }
 
     /**
+     * The names pages and route.ts files declare, by pattern.
+     *
+     * `export const name = 'verification.verify'` in the file, carried by
+     * the build as `routeName`: the name Laravel's own code asks for - a
+     * notification's link, a middleware's redirect - given to the page that
+     * answers it, wherever its folder is. In the file it names, because a
+     * route has one name and a middleware.ts covers the folders below it.
+     *
+     * @param  array<string, mixed>  $manifest
+     * @return array<string, string> pattern => name
+     */
+    public static function declaredNames(array $manifest): array
+    {
+        $out = [];
+
+        foreach ([...($manifest['routes'] ?? []), ...($manifest['apis'] ?? [])] as $route) {
+            if (! is_array($route) || ! is_array($route['segments'] ?? null)) {
+                continue;
+            }
+
+            $name = $route['routeName'] ?? null;
+
+            if (is_string($name) && $name !== '') {
+                $out[self::pattern($route['segments'])[0]] = $name;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * The route name each page answers to, by its pattern.
      *
      * Its path with dots for slashes, a parameter by its own name:
