@@ -2,6 +2,13 @@
 
 namespace RscKit;
 
+/**
+ * How a redirect reaches the host-call reply - a guard's, or one a callable
+ * returned. @internal: an app returns redirect(), to_route() or back(), or
+ * throws Laravel's HttpResponseException from deeper in.
+ *
+ * @internal
+ */
 class RscRedirectException extends \RuntimeException
 {
     /**
