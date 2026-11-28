@@ -5,6 +5,7 @@ namespace RscKit\Console;
 use Illuminate\Console\Command;
 use RscKit\CallableRegistry;
 use RscKit\RscKitServiceProvider;
+use RscKit\Support\RscPaths;
 
 /**
  * Writes down what discovery finds, so production does not find it again.
@@ -27,7 +28,7 @@ class RscCacheCommand extends Command
 
     public function handle(): int
     {
-        $discovered = CallableRegistry::discover(app_path('Rsc'));
+        $discovered = CallableRegistry::discover(RscPaths::root());
         $path = RscKitServiceProvider::callablesCachePath();
 
         if (! is_dir(dirname($path))) {

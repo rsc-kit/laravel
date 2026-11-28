@@ -29,7 +29,7 @@ class ActionManifest
      */
     public static function discover(): array
     {
-        $directory = config('rsc.actions_dir', app_path('Rsc/Actions'));
+        $directory = RscPaths::actions();
 
         if ($directory === null || ! is_dir($directory)) {
             return [];

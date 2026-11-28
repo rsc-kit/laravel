@@ -21,6 +21,7 @@ use RscKit\Http\HostCallController;
 use RscKit\Http\HostCallDispatcher;
 use RscKit\Http\RendererProxy;
 use RscKit\Support\RendererRoutes;
+use RscKit\Support\RscPaths;
 
 /**
  * Laravel as the backend of an rsc-kit application.
@@ -88,7 +89,7 @@ class RscKitServiceProvider extends ServiceProvider
         $this->app->singleton(CallableRegistry::class, function ($app) {
             $registry = new CallableRegistry($app);
 
-            // Recursive: app/Rsc/Actions and anything nested under either.
+            // Recursive: config('rsc.dir') (app/Rsc), its Actions and anything nested.
             // From the map `rsc:cache` wrote when there is one - production,
             // after `optimize` - and by walking the directory when not.
             $cached = self::callablesCachePath();
@@ -96,7 +97,7 @@ class RscKitServiceProvider extends ServiceProvider
             if (is_file($cached)) {
                 $registry->registerDiscovered(require $cached);
             } else {
-                $registry->discoverFrom(app_path('Rsc'));
+                $registry->discoverFrom(RscPaths::root());
             }
 
             // The reserved name the renderer asks route middleware on.

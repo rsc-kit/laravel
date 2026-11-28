@@ -1,15 +1,16 @@
 <?php
 
+use Illuminate\Support\Facades\Config;
 /**
  * Action discovery reads the app's config, so it belongs with the suite that
  * boots the framework. The rendering half - the "use server" stubs and their
  * declarations - is the engine's, from the map this writes.
  */
 
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
 use RscKit\CallableRegistry;
 use RscKit\Support\ActionManifest;
+use RscKit\Support\RscPaths;
 
 test('discovery maps a class to a module, and its methods to the module\'s exports', function () {
     $dir = sys_get_temp_dir().'/rsc-actions-'.uniqid();
@@ -104,8 +105,13 @@ test('the actions directory is in the published config, with its default', funct
     // could not see it to change it.
     $config = require dirname(__DIR__, 2).'/config/rsc.php';
 
-    expect($config)->toHaveKey('actions_dir');
-    expect($config['actions_dir'])->toBe(app_path('Rsc/Actions'));
+    expect($config)->toHaveKey('actions_dir')->toHaveKey('dir');
+    expect($config['dir'])->toBe(app_path('Rsc'));
+
+    // Null in the file, so moving `dir` moves the actions with it.
+    Config::set('rsc.dir', $config['dir']);
+    Config::set('rsc.actions_dir', $config['actions_dir']);
+    expect(RscPaths::actions())->toBe(app_path('Rsc/Actions'));
 });
 
 test('a missing actions directory discovers nothing', function () {

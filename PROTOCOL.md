@@ -270,7 +270,8 @@ runs it as dev and every build start), and `make:rsc-action` writes it too.
 
 - **`actions`** maps each module the build writes under `server-actions/` to
   its exports, and each export to the name a call arrives under. Discovered by
-  reflection over `app/Rsc/Actions` (`rsc.actions_dir`), inherited methods
+  reflection over `app/Rsc/Actions` (`rsc.actions_dir`, by default `Actions` under
+  `rsc.dir`), inherited methods
   included: `App\Rsc\Actions\Orders::cancel` is the `cancel` export of
   `server-actions/orders`, called as `Orders.cancel` (the class's short name).
   A class in a folder is a module in one, in kebab case

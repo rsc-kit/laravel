@@ -64,12 +64,20 @@ return [
     'routes_manifest' => env('RSC_ROUTES_MANIFEST', base_path('bootstrap/rsc/vite/routes.json')),
 
     /*
-     * Where the server actions live - the classes the build writes a
-     * "use server" stub for, which `rsc:host-manifest` writes to rsc-host.json. The functions a
-     * server component reaches through rpc() are found under app/Rsc as a
-     * whole, this directory included.
+     * Where the classes the renderer calls live: every function a server
+     * component reaches through rpc(), server actions included. app/Rsc by
+     * default; app_path('Http/Rsc') if you would rather keep them beside
+     * your controllers. A callable is named by its class's short name, so
+     * moving the folder renames nothing a page calls.
      */
-    'actions_dir' => env('RSC_ACTIONS_DIR', app_path('Rsc/Actions')),
+    'dir' => env('RSC_DIR', app_path('Rsc')),
+
+    /*
+     * Where the server actions live - the classes the build writes a
+     * "use server" stub for, which `rsc:host-manifest` writes to rsc-host.json.
+     * Inside `dir`, which is what makes them callable. Null is `dir`/Actions.
+     */
+    'actions_dir' => env('RSC_ACTIONS_DIR'),
 
     'host_call_path' => env('RSC_HOST_CALL_PATH', '/__rsc/host-call'),
     'host_call_secret' => env('RSC_HOST_CALL_SECRET'),
