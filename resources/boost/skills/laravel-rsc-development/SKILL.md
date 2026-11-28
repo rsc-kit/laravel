@@ -794,6 +794,9 @@ export function NewOrder() {
   and an `optimistic` option. It takes a generated stub as it is (core 0.45),
   and `onSuccess` gets what the PHP method returned:
   `useAction(verification.send)`, with `{ onSuccess }` as its second argument.
+- A form with nothing to show - a sign-out button - can be a plain `<form>`
+  (core 0.45.3): `<form action={session.destroy}>` typechecks, and a redirect
+  the action returns is followed. Use `<Form>` when the form shows errors.
 - No CSRF token, no `@csrf`, no `csrf_token()` in an `rpc()` call. A form, an
   action and Laravel 13 itself accept a same-origin post by the browser's
   `Sec-Fetch-Site` header. A `POST`, `PUT`, `PATCH` or `DELETE` to a
