@@ -600,8 +600,17 @@ import * as orders from '../../server-actions/orders'
   on the page's response. Redirect after it as usual. A callable read inside
   a page cannot - its response headers have gone - so cookies are set from
   actions.
-- A message for the next page ("Profile updated." after a save): flash it as
-  on any Laravel route, `return back()->with('status', 'Profile updated.')`.
+- Saying a save worked, when the visitor stays on the page: return the
+  message and let the form show it. Declare the method `: string`, return
+  `__('Password updated.')`, and write
+  `<Form action={password.update} onSuccess={(message) => toast.success(message)}>`.
+  `onSuccess` is typed from the method (core 0.45.4), the same as useAction's.
+  Nothing is flashed and nothing renders for it, so a page the router kept
+  never toasts twice. Call `Rsc::revalidate()` first when the save changed
+  what the page shows. Do not flash and `back()` for this.
+- A message for the next page, when the action redirects somewhere else, so
+  the form is gone (or Fortify answered): flash it as on any Laravel route,
+  `return back()->with('status', 'Profile updated.')`.
   The flash lasts the whole render the redirect leads to (0.31), so every read
   in it finds it, and a reload does not show it again. Read it in the page with
   an rpc - `public function status(): ?string { return session('status'); }`

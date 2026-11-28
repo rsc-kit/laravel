@@ -134,6 +134,7 @@ dataset('what an agent must be told', [
     'a redirect back to the page an action was called from is a success: onSuccess runs' => ['redirect back to the page'],
     'useAction takes a generated stub, and onSuccess gets what PHP returned' => ['useAction(verification.send)'],
     'a generated stub is a plain <form action>, and a redirect it returns is followed' => ['<form action={session.destroy}>'],
+    'a save that stays on the page returns its message, and <Form onSuccess> shows it, typed from the method' => ['onSuccess={(message) => toast.success(message)}', 'Do not flash and `back()` for this'],
     'an action\'s model is the page\'s, bound as a route binds it' => ['`publish(Post $post)` is the `{post}`'],
     'an action\'s guards judge the page it was posted from, with the form\'s fields when it takes a Request' => ['against the page its form was posted from', "Fortify's `throttle:login`"],
 ]);
