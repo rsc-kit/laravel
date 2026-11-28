@@ -135,6 +135,26 @@ it('prints the command for the JavaScript half rather than doing it in PHP', fun
         ->assertSuccessful();
 });
 
+it('hands init the runtime when one is asked for, and leaves it to init otherwise', function () {
+    File::put($this->base.'/.env', "APP_NAME=Laravel\n");
+
+    $this->artisan('rsc:install --skip-js --runtime=bun')
+        ->expectsOutputToContain('--runtime=bun')
+        ->assertSuccessful();
+
+    $this->artisan('rsc:install --skip-js')
+        ->doesntExpectOutputToContain('--runtime=')
+        ->assertSuccessful();
+});
+
+it('refuses a runtime that is neither node nor bun, before touching anything', function () {
+    $this->artisan('rsc:install --skip-js --runtime=deno')
+        ->expectsOutputToContain('--runtime is node or bun')
+        ->assertFailed();
+
+    expect(File::exists(config_path('rsc.php')))->toBeFalse();
+});
+
 /**
  * The two halves ship separately and cannot depend on each other.
  *

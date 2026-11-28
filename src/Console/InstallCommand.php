@@ -26,12 +26,21 @@ class InstallCommand extends Command
 {
     protected $signature = 'rsc:install
         {--force : Overwrite config/rsc.php if it is already published}
-        {--skip-js : Do only the PHP half, and print the command for the rest}';
+        {--skip-js : Do only the PHP half, and print the command for the rest}
+        {--runtime= : node or bun, for the renderer (Node unless the app has a bun.lock)}';
 
     protected $description = 'Set this application up to render React Server Components';
 
     public function handle(): int
     {
+        $runtime = $this->option('runtime');
+
+        if ($runtime !== null && ! in_array($runtime, ['node', 'bun'], true)) {
+            $this->components->error("--runtime is node or bun, not [{$runtime}].");
+
+            return self::FAILURE;
+        }
+
         $this->components->info('Setting up rsc-kit');
 
         $this->publishConfig();
@@ -314,6 +323,12 @@ class InstallCommand extends Command
             '--host=laravel',
             '--backend='.escapeshellarg((string) config('app.url')),
         ];
+
+        // Only when asked: init decides it otherwise, from the app's own
+        // lockfile, and says which it chose.
+        if (in_array($runtime = $this->option('runtime'), ['node', 'bun'], true)) {
+            $arguments[] = '--runtime='.$runtime;
+        }
 
         if (! $this->input->isInteractive()) {
             $arguments[] = '--yes';
