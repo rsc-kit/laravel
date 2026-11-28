@@ -9,6 +9,7 @@ use RscKit\RouteMiddleware;
 use RscKit\Support\ActionManifest;
 use RscKit\Support\HostSources;
 use RscKit\Support\HostTypes;
+use RscKit\Support\RscPaths;
 use RscKit\Versions;
 use Symfony\Component\Console\Input\StreamableInputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -53,7 +54,7 @@ class RscHostManifestCommand extends Command
         // calls this a moment after writing a class the registry was built
         // without. The registry adds what the app registered by hand.
         $callables = array_filter(
-            [...CallableRegistry::discover(app_path('Rsc')), ...$registry->all()],
+            [...CallableRegistry::discover(RscPaths::root()), ...$registry->all()],
             fn (string $name) => $name !== RouteMiddleware::FUNCTION && $name !== Versions::FUNCTION,
             ARRAY_FILTER_USE_KEY,
         );

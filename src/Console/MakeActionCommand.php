@@ -6,6 +6,8 @@ use Illuminate\Console\Command;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use RscKit\RscKitServiceProvider;
+use RscKit\Support\RscPaths;
+use RuntimeException;
 
 /**
  * Write a class the renderer can call, with its guards already on it.
@@ -13,7 +15,7 @@ use RscKit\RscKitServiceProvider;
  * `make:rsc-action Orders --method=cancel --auth --can=update,Order` is the
  * class the Laravel guide shows, typed out: the attributes the registry
  * reads are the same ones written here, so a guard asked for at the prompt
- * is the guard that runs. Under app/Rsc/Actions by default - a server action
+ * is the guard that runs. Under app/Rsc/Actions by default (config('rsc.dir'), then Actions) - a server action
  * the build writes a "use server" stub for - or under app/Rsc with --rpc, a
  * class a server component reaches through rpc().
  *
@@ -64,8 +66,15 @@ class MakeActionCommand extends Command
 
         $request = $form ? $this->requestClass($class) : null;
 
-        $namespace = rtrim('App\\Rsc'.($rpc ? '' : '\\Actions').($segments ? '\\'.implode('\\', $segments) : ''), '\\');
-        $directory = ($rpc ? app_path('Rsc') : app_path('Rsc/Actions')).($segments ? '/'.implode('/', $segments) : '');
+        $directory = ($rpc ? RscPaths::root() : RscPaths::actions()).($segments ? '/'.implode('/', $segments) : '');
+
+        try {
+            $namespace = RscPaths::namespaceFor($directory);
+        } catch (RuntimeException $e) {
+            $this->components->error($e->getMessage());
+
+            return self::FAILURE;
+        }
         $path = "{$directory}/{$class}.php";
 
         if ($this->files->exists($path) && ! $this->option('force')) {
