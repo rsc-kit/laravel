@@ -50,7 +50,7 @@ class RscKitServiceProvider extends ServiceProvider
      * ^0.24 through 0.44, and rsc:install warned every new app that its
      * renderer was out of step.
      */
-    public const ENGINE_CONSTRAINT = '^0.45';
+    public const ENGINE_CONSTRAINT = '^0.46';
 
     /**
      * What the renderer is allowed to be handed.
